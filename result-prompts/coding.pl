@@ -90,34 +90,36 @@ FPR::report(Observer, Feature) :- \+feature(Feature), confidence(Observer, Featu
 % =============================================================================
 % For each observation, provide a 'confidence' fact and an 'evidence' fact.
 % --- Atoms here are updated to match Section 2 ---
+% This section will be populated by the execute_logic_program function
 
 % --- Example Scenario: Two people observe an animal that looks like a cat ---
 
 % ## Observer 1: Very confident ##
 % "I'm 95% certain I saw a small muzzle."
 % Rule: For X% confidence on a POSITIVE sighting, use (X/100) for TPR and ((100-X)/100) for FPR.
-confidence(observer1, small_muzzle, 0.95, 0.05).
-evidence(report(observer1, small_muzzle), true).
+% confidence(observer1, small_muzzle, 0.95, 0.05).
+% evidence(report(observer1, small_muzzle), true).
 
 % "I'm 99% certain I saw retractable claws."
-confidence(observer1, retractable_claws, 0.99, 0.01).
-evidence(report(observer1, retractable_claws), true).
+% confidence(observer1, retractable_claws, 0.99, 0.01).
+% evidence(report(observer1, retractable_claws), true).
 
 
 % ## Observer 2: Less confident ##
 % "I think I saw small, pointed, upright ears, but I'm only 70% sure."
-confidence(observer2, small_pointed_upright_ears, 0.70, 0.30).
-evidence(report(observer2, small_pointed_upright_ears), true).
+% confidence(observer2, small_pointed_upright_ears, 0.70, 0.30).
+% evidence(report(observer2, small_pointed_upright_ears), true).
 
 % "I'm 90% sure it did NOT have large, drooping, or folded ears."
 % Rule: For Y% confidence on a NEGATIVE sighting, use ((100-Y)/100) for both TPR and FPR.
-confidence(observer2, large_drooping_or_folded_ears, 0.10, 0.10).
-evidence(report(observer2, large_drooping_or_folded_ears), false).
+% confidence(observer2, large_drooping_or_folded_ears, 0.10, 0.10).
+% evidence(report(observer2, large_drooping_or_folded_ears), false).
 
 
 % =============================================================================
 % ==  5. QUERY
 % =============================================================================
 % Asks the program for the final probability of each hypothesis.
-query(is_cat).
-query(is_dog).
+% These queries will be added by the execute_logic_program function
+% query(is_cat).
+% query(is_dog).

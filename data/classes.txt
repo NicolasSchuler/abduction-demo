@@ -1,0 +1,14 @@
+cat
+cat-eyes
+cat-head
+cat-nose
+cat-paws
+cat-whiskers
+dog
+dog-eyes
+dog-head
+dog-nose
+dog-paws
+dog-whiskers
+pointy-ears
+round-ears

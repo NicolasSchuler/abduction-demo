@@ -1,0 +1,65 @@
+{
+  "categories": [
+    {
+      "id": 0,
+      "name": "cat"
+    },
+    {
+      "id": 1,
+      "name": "cat-eyes"
+    },
+    {
+      "id": 2,
+      "name": "cat-head"
+    },
+    {
+      "id": 3,
+      "name": "cat-nose"
+    },
+    {
+      "id": 4,
+      "name": "cat-paws"
+    },
+    {
+      "id": 5,
+      "name": "cat-whiskers"
+    },
+    {
+      "id": 6,
+      "name": "dog"
+    },
+    {
+      "id": 7,
+      "name": "dog-eyes"
+    },
+    {
+      "id": 8,
+      "name": "dog-head"
+    },
+    {
+      "id": 9,
+      "name": "dog-nose"
+    },
+    {
+      "id": 10,
+      "name": "dog-paws"
+    },
+    {
+      "id": 11,
+      "name": "dog-whiskers"
+    },
+    {
+      "id": 12,
+      "name": "pointy-ears"
+    },
+    {
+      "id": 13,
+      "name": "round-ears"
+    }
+  ],
+  "info": {
+    "year": 2025,
+    "version": "1.0",
+    "contributor": "Label Studio"
+  }
+}

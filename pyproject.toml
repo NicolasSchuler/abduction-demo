@@ -1,0 +1,69 @@
+[project]
+name = "abduction-demo"
+version = "0.1.0"
+description = "Demo for the AISoLA 2025 Paper: 'Bridging Explanations and Logics: Opportunities and Multimodal Language Models'"
+authors = [
+  {name = "Nicolas Sebastian Schuler", email = "nicolas.schuler@student.kit.edu"},
+  {name = "Vincenzo Scotti", email = "vincenzo.scotti@kit.edu"},
+  {name = "Matteo Camilli", email = "matteo.camilli@polimi.it"},
+  {name = "Raffaela Mirandola", email = "raffaela.mirandola@kit.edu"}
+]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["XAI", "AI", "MLM", "LLM", "Logical Programming", "Reasoning"]
+requires-python = ">=3.13"
+dependencies = [
+    "langchain>=0.3.27",
+    "langchain-ollama>=0.3.6",
+    "numpy>=2.3.2",
+    "opencv-python>=4.11.0.86",
+    "langchain-community>=0.3.27",
+    "pyswip>=0.3.3",
+    "problog>=2.2.7",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pyright>=1.1.403",
+    "pytest>=8.4.1",
+    "ruff>=0.12.5",
+    "ty>=0.0.1a16",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+exclude = ["results/**"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["."]
+exclude = ["results/**"]
+
+[tool.pyright]
+venvPath = "./"
+venv = ".venv"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+pythonVersion = "3.13"
+pythonPlatform = "Linux"
+
+[tool.ruff]
+line-length = 120
+fix = true
+target-version = "py313"
+preview = true
+show-fixes = true
+unsafe-fixes = true
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+preview = true
