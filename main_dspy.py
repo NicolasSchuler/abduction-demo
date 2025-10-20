@@ -1,4 +1,6 @@
+import argparse
 import json
+import logging
 from pathlib import Path
 
 import dspy
@@ -8,85 +10,283 @@ from langchain_openai import ChatOpenAI
 from problog import get_evaluatable
 from problog.program import PrologString
 
+from src import config
 from src.data import load_data
 from src.img_utils import encode_base64_resized
+from src.validation import (
+    ValidationError,
+    sanitize_grounding_results,
+    validate_feature_list,
+    validate_grounding_results,
+    validate_problog_program,
+)
 
-TESTING = 1
-EPSILON_PROB = 0.0001
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL),
+    format=config.LOG_FORMAT,
+)
+logger = logging.getLogger(__name__)
 
 
 def reasoning():
-    template_reasoning = ChatPromptTemplate.from_messages([
-        ("system", "{role_reasoning}"),
-        ("human", "Question: {question_reasoning}"),
-    ])
-    model_reasoning = ChatOpenAI(model="qwen/qwen3-30b-a3b-2507", base_url="http://127.0.0.1:1234/v1", api_key="")
-    reasoning_chain = template_reasoning | model_reasoning | StrOutputParser()
+    """
+    Stage 1: Generate scientific reasoning about cat vs. dog classification.
 
-    description = reasoning_chain.invoke({
-        "role_reasoning": "You are a scientific expert in the classification of whether an animal is a cat or a dog. If tasked to answer questions, you shall ADHERE TO scientific facts, THINK STEP-BY-STEP, and explain your decision-making process. Focus on 'WHY' something is done, especially for complex logic, rather than 'WHAT' is done. Your answer SHOULD BE concise and direct, but still exhaustive, and avoid conversational fillers. Format your answer appropriately for better understanding. DO NOT rely on fillers like 'e.g.,', instead spell it out and try to be as complete as possible. Your reasoning MAY NOT be mutually exclusive. This is OK.",
-        "question_reasoning": "I want you to do a comparative analysis of cats and dogs. Your analysis must use the inherent traits and biological characteristics of each species. You should list each of these characteristics so that an informed decision can be made about whether a given animal depicted in an image is a cat or a dog. Please provide a detailed analysis, focusing on traits and characteristics that can be extracted from a given image. For formatting please use a list.",
-    })
-    return description
+    Uses an LLM to perform comparative biological analysis of cats and dogs,
+    identifying key distinguishing characteristics that can be detected in images.
+
+    Returns:
+        str: Detailed comparative analysis in markdown format, listing physical
+             characteristics like skull morphology, ear shape, eye position, etc.
+
+    Example output structure:
+        - Skull Morphology: cats have rounded skulls, dogs have elongated...
+        - Ear Shape: cats have pointed upright ears, dogs have variable...
+
+    Note:
+        Uses Qwen3-30B model via local LM server (http://127.0.0.1:1234/v1).
+        Result is typically cached to result-prompts/reasoning.md.
+    """
+    logger.info("Stage 1: Generating scientific reasoning about cat vs. dog classification")
+
+    try:
+        template_reasoning = ChatPromptTemplate.from_messages([
+            ("system", "{role_reasoning}"),
+            ("human", "Question: {question_reasoning}"),
+        ])
+        model_reasoning = ChatOpenAI(
+            model=config.MODEL_REASONING,
+            base_url=config.LLM_BASE_URL,
+            api_key=config.LLM_API_KEY,
+        )
+        reasoning_chain = template_reasoning | model_reasoning | StrOutputParser()
+
+        logger.debug(f"Using model: {config.MODEL_REASONING} at {config.LLM_BASE_URL}")
+
+        description = reasoning_chain.invoke({
+            "role_reasoning": config.REASONING_SYSTEM_ROLE,
+            "question_reasoning": config.REASONING_QUESTION,
+        })
+
+        if not description or not description.strip():
+            raise ValueError("LLM returned empty reasoning description")
+
+        logger.info(f"Generated reasoning description ({len(description)} characters)")
+        return description
+
+    except Exception as e:
+        logger.error(f"Failed to generate reasoning: {e}")
+        raise RuntimeError(f"Reasoning stage failed: {e}") from e
 
 
 def coding(description: str):
-    template_coding = ChatPromptTemplate.from_messages([
-        ("system", "{role_coding}"),
-        ("human", "Instructions: {instruction}\n Description: {description}"),
-    ])
+    """
+    Stage 2: Translate natural language reasoning into ProbLog program.
 
-    def gemini():
-        # dummy implementation for calling gemini api
-        pass
+    Converts the comparative analysis from Stage 1 into a formal probabilistic
+    logic program using ProbLog syntax. The program encodes:
+    - Prior probabilities for cat/dog classification
+    - Conditional probabilities P(feature | animal_type)
+    - Observation model linking features to observations
 
-    model_coding = gemini()
-    coding_chain = template_coding | model_coding | StrOutputParser()
+    Args:
+        description: Natural language reasoning from reasoning() function,
+                     containing comparative analysis of cat/dog characteristics.
 
-    coding_description = coding_chain.invoke({
-        "role_coding": """You are an expert Problog programmer with extended knowledge in reasoning and probabilities. Given instructions and a description, you write a correct logical Problog program that expresses the given question with probabilistic theory in mind. You SHALL format your answer so that it can be directly used as an input for a Problog interpreter. DO NOT incorporate example facts or queries into the knowledge base; these will be added later by the user. If necessary, add comments to your program to provide explanations to the user. You should follow roughly the following form:
-            1. Core Causal Model (LOGIC)
-            2. Knowledge Base (P(Feature | Animal))
-            3. Observation Model (PER-OBSERVATION)
-        """,
-        "instruction": "Write a logical program for the following description:",
-        "description": description,
-    })
-    return coding_description
+    Returns:
+        str: ProbLog program with following structure:
+             1. Core Causal Model (priors and rules)
+             2. Knowledge Base (conditional probabilities)
+             3. Observation Model (TPR/FPR for features)
+
+    Example output:
+        ```prolog
+        0.5::is_cat; 0.5::is_dog.
+        P::feature(F) :- is_cat, prob_cat(F, P).
+        prob_cat(small_muzzle, 0.95). prob_dog(small_muzzle, 0.2).
+        ...
+        ```
+
+    Note:
+        Currently uses a placeholder gemini() function. Replace with actual
+        Gemini API call or alternative LLM for full functionality.
+    """
+    logger.info("Stage 2: Translating reasoning into ProbLog program")
+
+    try:
+        template_coding = ChatPromptTemplate.from_messages([
+            ("system", "{role_coding}"),
+            ("human", "Instructions: {instruction}\n Description: {description}"),
+        ])
+
+        def gemini():
+            """
+            Placeholder for Gemini API implementation.
+
+            TODO: Implement actual Gemini API call. For now, this will cause an error
+            if coding stage is run without cached results.
+            """
+            logger.error("Gemini API not implemented. Please use TESTING=1 mode or implement this function.")
+            raise NotImplementedError(
+                "Gemini model is not implemented. "
+                "Please run in TESTING mode (TESTING=1) or implement the gemini() function "
+                "with a valid LLM API call (e.g., Google's Gemini API or alternative)."
+            )
+
+        model_coding = gemini()
+        coding_chain = template_coding | model_coding | StrOutputParser()
+
+        coding_description = coding_chain.invoke({
+            "role_coding": config.CODING_SYSTEM_ROLE,
+            "instruction": config.CODING_INSTRUCTION,
+            "description": description,
+        })
+
+        # Validate the generated program
+        validate_problog_program(coding_description)
+
+        logger.info(f"Generated ProbLog program ({len(coding_description)} characters)")
+        return coding_description
+
+    except NotImplementedError:
+        # Re-raise NotImplementedError for gemini
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate ProbLog program: {e}")
+        raise RuntimeError(f"Coding stage failed: {e}") from e
 
 
 def extract_feature_list(problog_program: str) -> list[str]:
-    lm = dspy.LM("huggingface/qwen/qwen3-coder-30b", api_base="http://127.0.0.1:1234/v1", api_key="")
-    dspy.configure(lm=lm)
+    """
+    Stage 3: Extract feature names (atoms) from ProbLog program.
 
-    class FeatureNames(dspy.Signature):
-        """Extracting Feature names from a Problog program."""
+    Parses the ProbLog program to identify all feature atoms that need to be
+    grounded from visual observations. Features are the predicates used in
+    prob_cat() and prob_dog() facts, such as 'small_muzzle', 'pointed_ears', etc.
 
-        problog_program: str = dspy.InputField(desc="Problog program")
-        features: list[str] = dspy.OutputField(desc="List of Feature names (atoms) of the Problog program")
+    Args:
+        problog_program: ProbLog program string from coding() function containing
+                         prob_cat/prob_dog predicates with feature names.
 
-    prompt = dspy.ChainOfThought(FeatureNames)
-    return prompt(problog_program=problog_program).features
+    Returns:
+        List of feature name strings to be grounded in images.
+
+    Example:
+        >>> program = "prob_cat(small_muzzle, 0.95). prob_dog(small_muzzle, 0.2)."
+        >>> extract_feature_list(program)
+        ['small_muzzle', 'pointed_ears', 'vertical_pupils', ...]
+
+    Note:
+        Uses Qwen3-Coder-30B via DSPy's structured prompting for reliable parsing.
+    """
+    logger.info("Stage 3: Extracting feature names from ProbLog program")
+
+    try:
+        lm = dspy.LM(config.MODEL_FEATURE_EXTRACTION, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+        dspy.configure(lm=lm)
+
+        logger.debug(f"Using model: {config.MODEL_FEATURE_EXTRACTION}")
+
+        class FeatureNames(dspy.Signature):
+            """Extracting Feature names from a Problog program."""
+
+            problog_program: str = dspy.InputField(desc="Problog program")
+            features: list[str] = dspy.OutputField(desc="List of Feature names (atoms) of the Problog program")
+
+        prompt = dspy.ChainOfThought(FeatureNames)
+        features = prompt(problog_program=problog_program).features
+
+        # Validate extracted features
+        validate_feature_list(features)
+
+        logger.info(f"Extracted {len(features)} features from ProbLog program")
+        logger.debug(f"Features: {features[:5]}..." if len(features) > 5 else f"Features: {features}")
+
+        return features
+
+    except ValidationError as e:
+        logger.error(f"Feature list validation failed: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract features: {e}")
+        raise RuntimeError(f"Feature extraction stage failed: {e}") from e
 
 
 def grounding(feature_list: list[str], image_path: Path):
-    lm = dspy.LM("huggingface/qwen/qwen3-vl-8b", api_base="http://127.0.0.1:1234/v1", api_key="")
-    dspy.configure(lm=lm)
+    """
+    Stage 4: Ground features in image using Vision-Language Model.
 
-    class Grounding(dspy.Signature):
-        feature_list: list[str] = dspy.InputField(desc="List of possible features present in the image")
-        image: dspy.Image = dspy.InputField(desc="Image to be analyzed for present features")
-        grounding: dict[str, float] = dspy.OutputField(
-            desc="A json mapping feature names to the probability of the feature being present in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
-        )
+    Analyzes an input image to detect the presence of each feature from the
+    feature list, assigning a probability score (0.0-1.0) for each feature.
+    This bridges symbolic reasoning with visual perception.
 
-    prompt = dspy.ChainOfThought(Grounding)
-    return prompt(
-        feature_list=feature_list,
-        image=dspy.Image(
-            url=f"data:image/jpg;base64,{encode_base64_resized(image_path, max_width=512, max_height=512, quality=80)}"
-        ),
-    ).grounding
+    Args:
+        feature_list: List of feature names to detect (e.g., ['small_muzzle',
+                      'pointed_ears', 'vertical_pupils']).
+        image_path: Path to the image file to analyze.
+
+    Returns:
+        Dictionary mapping feature names to probability scores (0.0 to 1.0).
+
+    Example:
+        >>> features = ['small_muzzle', 'pointed_ears']
+        >>> grounding(features, Path('data/images/cat.jpg'))
+        {'small_muzzle': 0.92, 'pointed_ears': 0.88}
+
+    Note:
+        - Uses Qwen3-VL-8B multimodal model via DSPy
+        - Image is automatically resized to 512x512 with 80% quality
+        - Requires local LM server with vision model support
+    """
+    logger.info(f"Stage 4: Grounding {len(feature_list)} features in image")
+    logger.debug(f"Image path: {image_path}")
+
+    try:
+        # Validate inputs
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+
+        lm = dspy.LM(config.MODEL_GROUNDING, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+        dspy.configure(lm=lm)
+
+        logger.debug(f"Using model: {config.MODEL_GROUNDING}")
+
+        class Grounding(dspy.Signature):
+            feature_list: list[str] = dspy.InputField(desc="List of possible features present in the image")
+            image: dspy.Image = dspy.InputField(desc="Image to be analyzed for present features")
+            grounding: dict[str, float] = dspy.OutputField(
+                desc="A json mapping feature names to the probability of the feature being present in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
+            )
+
+        prompt = dspy.ChainOfThought(Grounding)
+        result = prompt(
+            feature_list=feature_list,
+            image=dspy.Image(
+                url=f"data:image/jpg;base64,{encode_base64_resized(image_path, max_width=config.IMAGE_MAX_WIDTH, max_height=config.IMAGE_MAX_HEIGHT, quality=config.IMAGE_QUALITY)}"
+            ),
+        ).grounding
+
+        # Validate and sanitize grounding results
+        validate_grounding_results(result)
+        result = sanitize_grounding_results(result)
+
+        logger.info(f"Grounding completed: detected {len(result)} feature probabilities")
+        # Log confidence statistics
+        if result:
+            avg_conf = sum(result.values()) / len(result)
+            logger.debug(f"Average confidence: {avg_conf:.3f}")
+
+        return result
+
+    except FileNotFoundError:
+        raise
+    except ValidationError as e:
+        logger.error(f"Grounding validation failed: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to ground features: {e}")
+        raise RuntimeError(f"Grounding stage failed: {e}") from e
 
 
 def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> tuple[float, float]:
@@ -159,7 +359,7 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
 
     for feature_name, probability in grounding.items():
         # Clamp probability to avoid numerical issues with extreme values
-        prob = max(EPSILON_PROB, min(1.0 - EPSILON_PROB, probability))
+        prob = max(config.EPSILON_PROB, min(1.0 - config.EPSILON_PROB, probability))
 
         # Set up observation model parameters
         # TPR (True Positive Rate): probability of reporting the feature when it's present
@@ -182,6 +382,9 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
     full_program = base_program + "\n".join(evidence_lines)
 
     # Execute ProbLog inference
+    logger.info("Stage 5: Executing ProbLog inference")
+    logger.debug(f"Running inference with {len(grounding)} evidence items")
+
     try:
         # Create ProbLog program from string
         problog_model = PrologString(full_program)
@@ -203,48 +406,234 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
             elif "is_dog" in query_str:
                 dog_prob = float(probability)
 
+        logger.info(f"Inference complete: P(cat)={cat_prob:.4f}, P(dog)={dog_prob:.4f}")
         return cat_prob, dog_prob
 
     except Exception as e:
-        print(f"Error executing ProbLog program: {e}")
-        print("Returning default equal probabilities (0.5, 0.5)")
+        logger.error(f"Error executing ProbLog program: {e}", exc_info=True)
+        logger.warning("Returning default equal probabilities (0.5, 0.5)")
         # Return default equal probabilities in case of error
         return 0.5, 0.5
 
 
 def main():
-    print("Starting Abduction Demo")
+    """
+    Main pipeline orchestration function.
+
+    Executes the complete 5-stage pipeline:
+    1. Reasoning: Generate comparative analysis (or load cached)
+    2. Coding: Translate to ProbLog program (or load cached)
+    3. Feature Extraction: Extract feature names (or load cached)
+    4. Grounding: Detect features in image (or load cached)
+    5. Logic Execution: Run ProbLog inference to classify animal
+
+    The pipeline can run in two modes:
+    - TESTING=1: Uses cached results from result-prompts/ directory
+    - TESTING=0: Runs full pipeline with live LLM inference
+
+    Output:
+        Prints classification probabilities to console:
+        - Cat Probability: 0.0-1.0
+        - Dog Probability: 0.0-1.0
+
+    Note:
+        Currently processes labeled_images[1]. Modify index to classify
+        different images from the dataset.
+    """
+    logger.info("=" * 80)
+    logger.info("Starting Abduction Demo")
+    logger.info("=" * 80)
+
+    # Validate configuration
+    try:
+        config.validate_config()
+        logger.info("Configuration validated successfully")
+    except (ValueError, FileNotFoundError) as e:
+        logger.error(f"Configuration validation failed: {e}")
+        raise
+
+    # Load data
+    logger.info("Loading labeled images from data directory")
     labeled_images = load_data()
-    labeled_image = labeled_images[1]
+    logger.info(f"Loaded {len(labeled_images)} images")
 
-    if TESTING == 1:
-        reasoning_description = Path("result-prompts/reasoning.md").open("r").read()
-        problog_program = Path("result-prompts/coding.pl").open("r").read()
-        feature_list = Path("result-prompts/feature-list.txt").open("r").readlines()
-        grounding_res = json.loads(Path("result-prompts/grounding.json").open("r").read())
+    # Select image to process
+    if config.IMAGE_INDEX >= len(labeled_images):
+        logger.error(f"IMAGE_INDEX {config.IMAGE_INDEX} out of range (0-{len(labeled_images)-1})")
+        raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images)-1}")
+
+    labeled_image = labeled_images[config.IMAGE_INDEX]
+    logger.info(f"Processing image {config.IMAGE_INDEX}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})")
+
+    if config.TESTING == 1:
+        logger.info("Running in TESTING mode (using cached results)")
+        try:
+            reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
+            problog_program = config.CACHED_CODING_FILE.open("r").read()
+            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.open("r").readlines()]
+            grounding_res = json.loads(config.CACHED_GROUNDING_FILE.open("r").read())
+
+            # Validate loaded data
+            validate_problog_program(problog_program)
+            validate_feature_list(feature_list)
+            validate_grounding_results(grounding_res)
+            grounding_res = sanitize_grounding_results(grounding_res)
+
+            logger.debug("Loaded and validated all cached results")
+        except FileNotFoundError as e:
+            logger.error(f"Cached file not found: {e}")
+            logger.error("Please run with TESTING=0 first to generate cached results, or check your file paths")
+            raise
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse cached JSON file: {e}")
+            raise
+        except ValidationError as e:
+            logger.error(f"Cached data validation failed: {e}")
+            raise
     else:
-        reasoning_description = reasoning()
-        with open("result-prompts/reasoning.md", "w") as f:
-            f.write(reasoning_description)
+        logger.info("Running in FULL PIPELINE mode (live LLM inference)")
 
-        # ONLY FOR DEMONSTRATION PURPOSES
-        problog_program = coding(reasoning_description)
-        with open("result-prompts/coding.pl", "w") as f:
-            f.write(problog_program)
+        try:
+            # Ensure output directory exists
+            config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-        feature_list = extract_feature_list(problog_program=problog_program)
-        with open(file="result-prompts/feature-list.txt", mode="w") as f:
-            f.write("\n".join(feature_list))
+            reasoning_description = reasoning()
+            with open(config.CACHED_REASONING_FILE, "w") as f:
+                f.write(reasoning_description)
+            logger.debug(f"Saved reasoning to {config.CACHED_REASONING_FILE}")
 
-        grounding_res = grounding(feature_list=feature_list, image_path=labeled_image.image_path)
-        with open(file="result-prompts/grounding.json", mode="w") as f:
-            json.dump(grounding_res, f, indent=2)
+            # ONLY FOR DEMONSTRATION PURPOSES
+            problog_program = coding(reasoning_description)
+            with open(config.CACHED_CODING_FILE, "w") as f:
+                f.write(problog_program)
+            logger.debug(f"Saved ProbLog program to {config.CACHED_CODING_FILE}")
 
+            feature_list = extract_feature_list(problog_program=problog_program)
+            with open(file=config.CACHED_FEATURES_FILE, mode="w") as f:
+                f.write("\n".join(feature_list))
+            logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
+
+            grounding_res = grounding(feature_list=feature_list, image_path=labeled_image.image_path)
+            with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
+                json.dump(grounding_res, f, indent=2)
+            logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
+
+        except NotImplementedError as e:
+            logger.error(str(e))
+            logger.error("Cannot continue without implementing the Gemini API")
+            raise
+        except (RuntimeError, ValidationError) as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise
+
+    # Execute final inference
     p_cat, p_dog = execute_logic_program(problog_program, grounding_res)
-    print(f"Cat Probability: {p_cat}")
-    print(f"Dog Probability: {p_dog}")
-    print("End Abduction Demo")
+
+    # Display results
+    logger.info("=" * 80)
+    logger.info("CLASSIFICATION RESULTS")
+    logger.info("=" * 80)
+    logger.info(f"Image: {labeled_image.image_path.name}")
+    logger.info(f"Actual Label: {labeled_image.cl}")
+    logger.info(f"Cat Probability: {p_cat:.4f}")
+    logger.info(f"Dog Probability: {p_dog:.4f}")
+    predicted = "cat" if p_cat > p_dog else "dog"
+    logger.info(f"Predicted: {predicted}")
+    logger.info(f"Correct: {'✓' if predicted == labeled_image.cl else '✗'}")
+    logger.info("=" * 80)
+    logger.info("Abduction Demo Complete")
+    logger.info("=" * 80)
+
+    return p_cat, p_dog
+
+
+def parse_args():
+    """
+    Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments
+    """
+    parser = argparse.ArgumentParser(
+        description="Abduction Demo: Bridging Explanations and Logics with Multimodal LLMs",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["testing", "full"],
+        default="testing" if config.TESTING == 1 else "full",
+        help="Operation mode: 'testing' uses cached results, 'full' runs complete pipeline",
+    )
+
+    parser.add_argument(
+        "--image-index",
+        type=int,
+        default=config.IMAGE_INDEX,
+        help="Index of image to process from dataset (0-based)",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=config.RESULTS_DIR,
+        help="Directory to save results",
+    )
+
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default=config.LOG_LEVEL,
+        help="Logging level",
+    )
+
+    parser.add_argument(
+        "--llm-base-url",
+        type=str,
+        default=config.LLM_BASE_URL,
+        help="Base URL for LLM server",
+    )
+
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Print configuration and exit",
+    )
+
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    main()
+    # Parse command-line arguments
+    args = parse_args()
+
+    # Update config based on arguments
+    if args.mode == "testing":
+        config.TESTING = 1
+    else:
+        config.TESTING = 0
+
+    config.IMAGE_INDEX = args.image_index
+    config.RESULTS_DIR = args.output_dir
+    config.LOG_LEVEL = args.log_level
+    config.LLM_BASE_URL = args.llm_base_url
+
+    # Update logging level
+    logging.getLogger().setLevel(getattr(logging, config.LOG_LEVEL))
+
+    # Show config if requested
+    if args.show_config:
+        config.print_config()
+        exit(0)
+
+    # Run main pipeline
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        exit(1)
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        exit(1)

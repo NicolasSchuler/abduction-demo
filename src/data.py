@@ -13,6 +13,33 @@ DATA_PATH_LABELS = DATA_PATH_ROOT / "labels"
 
 
 class LabeledImage:
+    """
+    Represents an image with associated segmentation labels.
+
+    This class manages loading and processing of labeled images in YOLO format,
+    including polygon-based segmentation masks and category mapping.
+
+    Class Attributes:
+        categories (dict): Shared mapping of category IDs to names (e.g., {0: 'cat', 1: 'dog'})
+
+    Instance Attributes:
+        image_path (Path): Path to the image file
+        image (np.ndarray): Loaded image as OpenCV BGR array
+        labels (list[dict]): List of label dictionaries with keys:
+            - 'id' (int): Category ID
+            - 'name' (str): Category name (e.g., 'cat', 'dog')
+            - 'polygon' (list[str]): Normalized polygon coordinates
+        cl (str): Simplified classification label ('cat' or 'dog')
+
+    Example:
+        >>> limg = LabeledImage(
+        ...     Path('data/images/cat1.jpg'),
+        ...     Path('data/labels/cat1.txt'),
+        ...     Path('data/notes.json')
+        ... )
+        >>> print(limg.cl)  # 'cat'
+        >>> print(len(limg.labels))  # Number of segmented objects
+    """
     categories = {}
 
     def __init__(self, image_path: Path, label_path: Path, label_db: Path) -> None:
@@ -56,6 +83,35 @@ class LabeledImage:
 
 
 def load_data():
+    """
+    Load all labeled images from the data directory.
+
+    Scans the data/images/ directory for JPEG files and loads each with its
+    corresponding label file from data/labels/. Creates LabeledImage objects
+    for each image-label pair.
+
+    Returns:
+        list[LabeledImage]: List of LabeledImage objects, one per image file.
+
+    Expected Directory Structure:
+        data/
+        ├── images/
+        │   ├── img1.jpg
+        │   └── img2.jpg
+        ├── labels/
+        │   ├── img1.txt  (YOLO format)
+        │   └── img2.txt
+        └── notes.json  (category mappings)
+
+    Example:
+        >>> images = load_data()
+        >>> print(f"Loaded {len(images)} images")
+        >>> print(images[0].cl)  # 'cat' or 'dog'
+
+    Raises:
+        FileNotFoundError: If data directories don't exist
+        ValueError: If image/label pairs are mismatched
+    """
     limgs = []
     for img in DATA_PATH_IMAGES.glob("*.jpg"):
         limgs.append(LabeledImage(img, DATA_PATH_LABELS / (str(img.stem) + ".txt"), DATA_PATH_ROOT / "notes.json"))
