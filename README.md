@@ -6,7 +6,7 @@ A demonstration of multimodal AI pipeline combining Large Language Models (LLMs)
 
 This repository contains the reference implementation for the AISoLA 2025 paper:
 
-**"Bridging Explanations and Logics: Opportunities and Multimodal Language Models"**
+**["Bridging Explanations and Logics: Opportunities and Multimodal Language Models"](https://doi.org/10.5445/IR/1000184717)**
 
 **Authors:**
 
