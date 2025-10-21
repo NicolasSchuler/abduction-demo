@@ -433,9 +433,10 @@ def main(args=None):
     4. Grounding: Detect features in image (or load cached)
     5. Logic Execution: Run ProbLog inference to classify animal
 
-    The pipeline can run in two modes:
-    - TESTING=1: Uses cached results from result-prompts/ directory
-    - TESTING=0: Runs full pipeline with live LLM inference
+    The pipeline can run in three modes:
+    - testing: Uses cached results from result-prompts/ directory
+    - full: Runs complete pipeline with live LLM inference
+    - partial: Starts after coding step, uses cached reasoning and coding results
 
     Args:
         args: Command-line arguments namespace. If None, will parse arguments.
@@ -478,7 +479,7 @@ def main(args=None):
         f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
     )
 
-    if config.TESTING == 1:
+    if args.mode == "testing":
         logger.info("Running in TESTING mode (using cached results)")
         try:
             reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
@@ -495,7 +496,7 @@ def main(args=None):
             logger.debug("Loaded and validated all cached results")
         except FileNotFoundError as e:
             logger.error(f"Cached file not found: {e}")
-            logger.error("Please run with TESTING=0 first to generate cached results, or check your file paths")
+            logger.error("Please run with --mode=full first to generate cached results, or check your file paths")
             raise
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse cached JSON file: {e}")
@@ -503,7 +504,41 @@ def main(args=None):
         except ValidationError as e:
             logger.error(f"Cached data validation failed: {e}")
             raise
-    else:
+    elif args.mode == "partial":
+        logger.info("Running in PARTIAL mode (starting after coding step)")
+        try:
+            # Ensure output directory exists
+            config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Load cached reasoning and coding results
+            reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
+            problog_program = config.CACHED_CODING_FILE.open("r").read()
+
+            # Validate loaded cached data
+            validate_problog_program(problog_program)
+            logger.debug("Loaded and validated cached reasoning and coding results")
+
+            # Run remaining pipeline steps
+            feature_list = extract_feature_list(problog_program=problog_program)
+            with open(file=config.CACHED_FEATURES_FILE, mode="w") as f:
+                f.write("\n".join(feature_list))
+            logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
+
+            grounding_res = grounding(
+                feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
+            )
+            with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
+                json.dump(grounding_res, f, indent=2)
+            logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
+
+        except FileNotFoundError as e:
+            logger.error(f"Cached file not found: {e}")
+            logger.error("Please run with --mode=full first to generate reasoning and coding results")
+            raise
+        except (RuntimeError, ValidationError) as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise
+    else:  # args.mode == "full"
         logger.info("Running in FULL PIPELINE mode (live LLM inference)")
 
         try:
@@ -577,9 +612,9 @@ def parse_args():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["testing", "full"],
+        choices=["testing", "full", "partial"],
         default="testing" if config.TESTING == 1 else "full",
-        help="Operation mode: 'testing' uses cached results, 'full' runs complete pipeline",
+        help="Operation mode: 'testing' uses cached results, 'full' runs complete pipeline, 'partial' starts after coding step",
     )
 
     parser.add_argument(

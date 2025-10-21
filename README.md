@@ -124,13 +124,19 @@ python main_dspy.py
 python main_dspy.py [OPTIONS]
 
 Options:
-  --mode {testing,full}     Operation mode (default: testing)
-  --image-index INDEX       Image to process (default: 1)
-  --output-dir DIR          Results directory (default: result-prompts/)
-  --log-level LEVEL         Logging level (default: INFO)
-  --llm-base-url URL        LLM server URL
-  --show-config             Print configuration and exit
+  --mode {testing,full,partial}  Operation mode (default: testing)
+  --image-index INDEX            Image to process (default: 1)
+  --output-dir DIR               Results directory (default: result-prompts/)
+  --log-level LEVEL              Logging level (default: INFO)
+  --llm-base-url URL             LLM server URL
+  --show-config                  Print configuration and exit
 ```
+
+### Operation Modes
+
+1. **Testing Mode** (`--mode testing`): Uses cached results from all pipeline stages
+2. **Full Mode** (`--mode full`): Runs the complete 5-stage pipeline with live LLM inference
+3. **Partial Mode** (`--mode partial`): Starts after the coding step, using cached reasoning and coding results but running fresh feature extraction, grounding, and logic execution
 
 ### Examples
 
@@ -141,6 +147,9 @@ python main_dspy.py
 # Run full pipeline on image 0 with debug logging
 python main_dspy.py --mode full --image-index 0 --log-level DEBUG
 
+# Run partial pipeline (starts after coding step)
+python main_dspy.py --mode partial --image-index 1
+
 # Show current configuration
 python main_dspy.py --show-config
 
@@ -148,9 +157,9 @@ python main_dspy.py --show-config
 python main_dspy.py --llm-base-url http://192.168.1.10:8080/v1
 ```
 
-### Full Pipeline Mode
+### Pipeline Modes
 
-To run the complete pipeline with live LLM inference:
+**Full Pipeline Mode**: Run the complete pipeline with live LLM inference:
 
 ```bash
 # Using command-line argument
@@ -160,6 +169,22 @@ python main_dspy.py --mode full
 export TESTING=0
 python main_dspy.py
 ```
+
+**Partial Pipeline Mode**: Start after the coding step, using cached reasoning and coding results:
+
+```bash
+# Run partial pipeline (requires cached reasoning.md and coding.pl files)
+python main_dspy.py --mode partial
+
+# Useful for re-running feature extraction and grounding with different parameters
+python main_dspy.py --mode partial --highlighted-only
+```
+
+This mode is particularly useful when:
+
+- You want to experiment with different feature extraction or grounding parameters
+- The reasoning and coding stages are stable but you need to update the vision processing
+- You're developing or debugging the later stages of the pipeline
 
 ### Output
 
@@ -251,7 +276,7 @@ Configuration is centralized in `src/config.py` and can be overridden via:
 
 Key configuration parameters:
 
-- `TESTING`: Set to `1` for cached results, `0` for live inference
+- `TESTING`: Set to `1` for cached results, `0` for live inference (automatically managed by `--mode`)
 - `IMAGE_INDEX`: Which image to process from the dataset
 - `EPSILON_PROB`: Minimum probability value to avoid numerical issues (default: 0.0001)
 - `LLM_BASE_URL`: LLM server endpoint
@@ -355,7 +380,11 @@ Explainable AI (XAI), Multimodal Language Models (MLM), Large Language Models (L
 
 **Issue**: `NotImplementedError: Gemini model is not implemented`
 
-- **Solution**: Run in testing mode (`--mode testing`) or implement the Gemini API in `main_dspy.py`
+- **Solution**: Run in testing mode (`--mode testing`) or partial mode (`--mode partial`) or implement the Gemini API in `main_dspy.py`
+
+**Issue**: `FileNotFoundError: Cached reasoning file not found` when using partial mode
+
+- **Solution**: Run full pipeline first (`--mode full`) to generate cached reasoning and coding files, then use partial mode
 
 **Issue**: Tests fail with import errors
 
