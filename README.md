@@ -9,6 +9,7 @@ This repository contains the reference implementation for the AISoLA 2025 paper:
 **"Bridging Explanations and Logics: Opportunities and Multimodal Language Models"**
 
 **Authors:**
+
 - Nicolas Sebastian Schuler (nicolas.schuler@student.kit.edu)
 - Vincenzo Scotti (vincenzo.scotti@kit.edu)
 - Matteo Camilli (matteo.camilli@polimi.it)
@@ -31,30 +32,35 @@ The system implements a 5-stage pipeline that transforms natural language reason
 ```
 
 ### Stage 1: Reasoning
+
 - **Input**: Scientific query about cat vs. dog classification
 - **Process**: LLM generates comparative analysis of biological characteristics
 - **Output**: Structured reasoning document (`reasoning.md`)
 - **Model**: Qwen3-30B
 
 ### Stage 2: Coding
+
 - **Input**: Reasoning description from Stage 1
 - **Process**: LLM translates natural language into ProbLog program
 - **Output**: Probabilistic logic program (`coding.pl`)
 - **Model**: Gemini (configurable)
 
 ### Stage 3: Feature Extraction
+
 - **Input**: ProbLog program from Stage 2
 - **Process**: LLM extracts feature names (atoms) from the program
 - **Output**: List of feature identifiers (`feature-list.txt`)
 - **Model**: Qwen3-Coder-30B with DSPy
 
 ### Stage 4: Grounding
+
 - **Input**: Feature list + input image
 - **Process**: Vision-Language Model detects features and assigns confidence scores
 - **Output**: Feature probability mappings (`grounding.json`)
 - **Model**: Qwen3-VL-8B with DSPy
 
 ### Stage 5: Logic Execution
+
 - **Input**: ProbLog program + grounded evidence
 - **Process**: Probabilistic inference using ProbLog engine
 - **Output**: Classification probabilities (P(cat), P(dog))
@@ -63,6 +69,7 @@ The system implements a 5-stage pipeline that transforms natural language reason
 ## Installation
 
 ### Prerequisites
+
 - Python 3.13 or higher
 - [uv](https://github.com/astral-sh/uv) package manager
 - Local LLM server (LM Studio, Ollama, or similar) running on `http://127.0.0.1:1234/v1`
@@ -70,17 +77,20 @@ The system implements a 5-stage pipeline that transforms natural language reason
 ### Setup
 
 1. **Clone the repository:**
+
    ```bash
-   git clone <repository-url>
+   git clone git@github.com:NicolasSchuler/abduction-demo.git
    cd abduction-demo
    ```
 
 2. **Install dependencies using uv:**
+
    ```bash
    uv sync
    ```
 
    Alternatively, with pip:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -154,7 +164,9 @@ python main_dspy.py
 ### Output
 
 The script outputs:
+
 - **Console**: Classification probabilities
+
   ```
   2025-10-20 17:35:46 - INFO - Cat Probability: 0.8734
   2025-10-20 17:35:46 - INFO - Dog Probability: 0.1266
@@ -207,22 +219,25 @@ See `pyproject.toml` for complete dependency list.
 ## Data Format
 
 ### Images
+
 - Format: JPEG (.jpg)
 - Location: `data/images/`
 - Naming: Arbitrary (matched with label files by stem)
 
 ### Labels
+
 - Format: YOLO-style segmentation format
 - Location: `data/labels/`
 - Format per line: `<class_id> <x1> <y1> <x2> <y2> ... <xn> <yn>`
 - Coordinates: Normalized (0.0-1.0)
 
 ### Category Mapping (`data/notes.json`)
+
 ```json
 {
   "categories": [
-    {"id": 0, "name": "cat"},
-    {"id": 1, "name": "dog"}
+    { "id": 0, "name": "cat" },
+    { "id": 1, "name": "dog" }
   ]
 }
 ```
@@ -230,10 +245,12 @@ See `pyproject.toml` for complete dependency list.
 ## Configuration
 
 Configuration is centralized in `src/config.py` and can be overridden via:
+
 - Environment variables (e.g., `export TESTING=0`)
 - Command-line arguments (e.g., `--mode full`)
 
 Key configuration parameters:
+
 - `TESTING`: Set to `1` for cached results, `0` for live inference
 - `IMAGE_INDEX`: Which image to process from the dataset
 - `EPSILON_PROB`: Minimum probability value to avoid numerical issues (default: 0.0001)
@@ -241,6 +258,7 @@ Key configuration parameters:
 - Model identifiers for each pipeline stage
 
 View configuration:
+
 ```bash
 python -m src.config
 # or
@@ -259,11 +277,13 @@ export LLM_BASE_URL=http://localhost:8080/v1  # Custom LLM server
 ## Development
 
 ### Code Style
+
 - Formatter: Ruff (line length: 120)
 - Type checker: Pyright
 - Python version: 3.13
 
 ### Running Tests
+
 ```bash
 # Run all tests
 pytest src/test_pipeline.py -v
@@ -276,16 +296,19 @@ pytest src/test_pipeline.py::TestValidation -v
 ```
 
 ### Running Type Checks
+
 ```bash
 pyright
 ```
 
 ### Running Linter
+
 ```bash
 ruff check .
 ```
 
 ### Running Formatter
+
 ```bash
 ruff format .
 ```
@@ -310,6 +333,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 This research was conducted at:
+
 - Karlsruhe Institute of Technology (KIT), Germany
 - Politecnico di Milano, Italy
 
@@ -322,15 +346,19 @@ Explainable AI (XAI), Multimodal Language Models (MLM), Large Language Models (L
 ### Common Issues
 
 **Issue**: `FileNotFoundError: Data directory not found`
+
 - **Solution**: Ensure `data/images/` and `data/labels/` directories exist and contain files
 
 **Issue**: `Connection refused` when running full pipeline
+
 - **Solution**: Start your local LLM server and verify it's running on the configured URL
 
 **Issue**: `NotImplementedError: Gemini model is not implemented`
+
 - **Solution**: Run in testing mode (`--mode testing`) or implement the Gemini API in `main_dspy.py`
 
 **Issue**: Tests fail with import errors
+
 - **Solution**: Run tests from project root: `pytest src/test_pipeline.py -v`
 
 ### Getting Help
