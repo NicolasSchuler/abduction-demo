@@ -213,7 +213,7 @@ def extract_feature_list(problog_program: str) -> list[str]:
         raise RuntimeError(f"Feature extraction stage failed: {e}") from e
 
 
-def grounding(feature_list: list[str], image_path: Path):
+def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool = False):
     """
     Stage 4: Ground features in image using Vision-Language Model.
 
@@ -225,6 +225,9 @@ def grounding(feature_list: list[str], image_path: Path):
         feature_list: List of feature names to detect (e.g., ['small_muzzle',
                       'pointed_ears', 'vertical_pupils']).
         image_path: Path to the image file to analyze.
+        highlighted_only: If True, only consider features that are highlighted/emphasized
+                          in the image. If False, consider all features present regardless
+                          of highlighting. Defaults to False.
 
     Returns:
         Dictionary mapping feature names to probability scores (0.0 to 1.0).
@@ -247,6 +250,11 @@ def grounding(feature_list: list[str], image_path: Path):
         if not image_path.exists():
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
+        if highlighted_only:
+            grounding_desc = "A json mapping feature names to the probability of the feature being present in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
+        else:
+            grounding_desc = "A json mapping feature names to the probability of the feature being present and highlighted in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
+
         lm = dspy.LM(config.MODEL_GROUNDING, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
         dspy.configure(lm=lm)
 
@@ -255,9 +263,7 @@ def grounding(feature_list: list[str], image_path: Path):
         class Grounding(dspy.Signature):
             feature_list: list[str] = dspy.InputField(desc="List of possible features present in the image")
             image: dspy.Image = dspy.InputField(desc="Image to be analyzed for present features")
-            grounding: dict[str, float] = dspy.OutputField(
-                desc="A json mapping feature names to the probability of the feature being present in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
-            )
+            grounding: dict[str, float] = dspy.OutputField(desc=grounding_desc)
 
         prompt = dspy.ChainOfThought(Grounding)
         result = prompt(
@@ -416,7 +422,7 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
         return 0.5, 0.5
 
 
-def main():
+def main(args=None):
     """
     Main pipeline orchestration function.
 
@@ -431,6 +437,9 @@ def main():
     - TESTING=1: Uses cached results from result-prompts/ directory
     - TESTING=0: Runs full pipeline with live LLM inference
 
+    Args:
+        args: Command-line arguments namespace. If None, will parse arguments.
+
     Output:
         Prints classification probabilities to console:
         - Cat Probability: 0.0-1.0
@@ -440,6 +449,8 @@ def main():
         Currently processes labeled_images[1]. Modify index to classify
         different images from the dataset.
     """
+    if args is None:
+        args = parse_args()
     logger.info("=" * 80)
     logger.info("Starting Abduction Demo")
     logger.info("=" * 80)
@@ -458,12 +469,14 @@ def main():
     logger.info(f"Loaded {len(labeled_images)} images")
 
     # Select image to process
-    if config.IMAGE_INDEX >= len(labeled_images):
-        logger.error(f"IMAGE_INDEX {config.IMAGE_INDEX} out of range (0-{len(labeled_images)-1})")
-        raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images)-1}")
+    if args.image_index >= len(labeled_images):
+        logger.error(f"IMAGE_INDEX {args.image_index} out of range (0-{len(labeled_images) - 1})")
+        raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images) - 1}")
 
-    labeled_image = labeled_images[config.IMAGE_INDEX]
-    logger.info(f"Processing image {config.IMAGE_INDEX}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})")
+    labeled_image = labeled_images[args.image_index]
+    logger.info(
+        f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
+    )
 
     if config.TESTING == 1:
         logger.info("Running in TESTING mode (using cached results)")
@@ -513,7 +526,9 @@ def main():
                 f.write("\n".join(feature_list))
             logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
 
-            grounding_res = grounding(feature_list=feature_list, image_path=labeled_image.image_path)
+            grounding_res = grounding(
+                feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
+            )
             with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
                 json.dump(grounding_res, f, indent=2)
             logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
@@ -602,6 +617,13 @@ def parse_args():
         help="Print configuration and exit",
     )
 
+    parser.add_argument(
+        "--highlighted-only",
+        action="store_true",
+        default=False,
+        help="Only consider highlighted features in grounding (default: consider all features)",
+    )
+
     return parser.parse_args()
 
 
@@ -630,7 +652,7 @@ if __name__ == "__main__":
 
     # Run main pipeline
     try:
-        main()
+        main(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         exit(1)
