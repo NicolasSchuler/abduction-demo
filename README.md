@@ -17,6 +17,14 @@ This repository contains the reference implementation for the AISoLA 2025 paper:
 
 The demo showcases a novel approach to explainable AI that bridges natural language reasoning with formal probabilistic logic to classify animals (cats vs. dogs) in images.
 
+## Demo Videos
+
+See the system in action with these terminal recordings:
+
+- [Kitty with highlighting (VLM respects highlighting)](https://asciinema.org/a/kK4DzK42LhfPiLWwLsov5H1QD) - Demonstrates the `--highlighted-only` mode where the VLM correctly identifies only red-highlighted features
+- [Raw kitty (no highlighting)](https://asciinema.org/a/L6XpAwddCe5zaRdzGORKrGuvN) - Standard processing without feature highlighting
+- [Kitty with highlighting (VLM not respecting highlighting)](https://asciinema.org/a/Spd3nVaOzaDEmzFFK1vFkYEVc) - Example where the VLM processes all features despite highlighting
+
 ## Architecture
 
 The system implements a 5-stage pipeline that transforms natural language reasoning into formal logical inference:
