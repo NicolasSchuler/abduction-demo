@@ -33,7 +33,7 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 MODEL_REASONING = os.getenv("MODEL_REASONING", "qwen/qwen3-30b-a3b-2507")
 MODEL_CODING = os.getenv("MODEL_CODING", "gemini")  # Placeholder - needs implementation
 MODEL_FEATURE_EXTRACTION = os.getenv("MODEL_FEATURE_EXTRACTION", "huggingface/qwen/qwen3-coder-30b")
-MODEL_GROUNDING = os.getenv("MODEL_GROUNDING", "huggingface/qwen/qwen3-vl-8b")
+MODEL_GROUNDING = os.getenv("MODEL_GROUNDING", "huggingface/google/gemma-3-27b")
 
 # =============================================================================
 # File Paths
@@ -172,7 +172,7 @@ def print_config():
     print(f"Mode: {'TESTING (cached)' if TESTING else 'FULL PIPELINE'}")
     print(f"Image Index: {IMAGE_INDEX}")
     print(f"LLM Base URL: {LLM_BASE_URL}")
-    print(f"Models:")
+    print("Models:")
     print(f"  - Reasoning: {MODEL_REASONING}")
     print(f"  - Coding: {MODEL_CODING}")
     print(f"  - Feature Extraction: {MODEL_FEATURE_EXTRACTION}")

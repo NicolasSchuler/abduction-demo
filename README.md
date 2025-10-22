@@ -55,9 +55,12 @@ The system implements a 5-stage pipeline that transforms natural language reason
 ### Stage 4: Grounding
 
 - **Input**: Feature list + input image
-- **Process**: Vision-Language Model detects features and assigns confidence scores
+- **Process**: Vision-Language Model detects features and assigns confidence scores. Feature names are transformed from underscores to spaces for better natural language processing (e.g., `pointed_ears` → `pointed ears`), then transformed back for ProbLog compatibility.
 - **Output**: Feature probability mappings (`grounding.json`)
 - **Model**: Qwen3-VL-8B with DSPy
+- **Options**:
+  - Standard mode: Detects all features present in the image
+  - Highlighted-only mode (`--highlighted-only`): Only detects red-highlighted features, assigns 0.0 to non-highlighted features
 
 ### Stage 5: Logic Execution
 
@@ -118,6 +121,20 @@ Run the demo in testing mode (uses cached results):
 python main_dspy.py
 ```
 
+### Using Custom Images
+
+You can process custom images using the `--image-path` flag. This is particularly useful in partial mode for testing grounding on new images:
+
+```bash
+# Process a custom image with the same feature set
+python main_dspy.py --mode partial --image-path /path/to/your/image.jpg
+
+# Process custom image with highlighted-only mode
+python main_dspy.py --mode partial --image-path ./kitty_highlighted.webp --highlighted-only
+```
+
+**Note**: Custom images will have their label set to "unknown" since they're not part of the labeled dataset. The `--image-path` flag overrides `--image-index`.
+
 ### Command-Line Options
 
 ```bash
@@ -125,7 +142,9 @@ python main_dspy.py [OPTIONS]
 
 Options:
   --mode {testing,full,partial}  Operation mode (default: testing)
-  --image-index INDEX            Image to process (default: 1)
+  --image-index INDEX            Image to process from dataset (default: 1)
+  --image-path PATH              Path to custom image file (overrides --image-index)
+  --highlighted-only             Only consider red highlighted features in grounding
   --output-dir DIR               Results directory (default: result-prompts/)
   --log-level LEVEL              Logging level (default: INFO)
   --llm-base-url URL             LLM server URL
@@ -136,7 +155,7 @@ Options:
 
 1. **Testing Mode** (`--mode testing`): Uses cached results from all pipeline stages
 2. **Full Mode** (`--mode full`): Runs the complete 5-stage pipeline with live LLM inference
-3. **Partial Mode** (`--mode partial`): Starts after the coding step, using cached reasoning and coding results but running fresh feature extraction, grounding, and logic execution
+3. **Partial Mode** (`--mode partial`): Starts after the coding step, using cached reasoning, coding, and feature extraction results. Only runs grounding (on potentially new images) and logic execution. Ideal for testing different images with the same feature set.
 
 ### Examples
 
@@ -147,8 +166,14 @@ python main_dspy.py
 # Run full pipeline on image 0 with debug logging
 python main_dspy.py --mode full --image-index 0 --log-level DEBUG
 
-# Run partial pipeline (starts after coding step)
-python main_dspy.py --mode partial --image-index 1
+# Run partial pipeline with custom image
+python main_dspy.py --mode partial --image-path ./my_cat.jpg
+
+# Run with highlighted features only (red-highlighted regions)
+python main_dspy.py --mode partial --image-path ./kitty_highlighted.webp --highlighted-only
+
+# Process image from dataset with highlighted features
+python main_dspy.py --mode partial --image-index 1 --highlighted-only
 
 # Show current configuration
 python main_dspy.py --show-config
@@ -170,21 +195,25 @@ export TESTING=0
 python main_dspy.py
 ```
 
-**Partial Pipeline Mode**: Start after the coding step, using cached reasoning and coding results:
+**Partial Pipeline Mode**: Start after the coding step, using cached reasoning, coding, and feature extraction results:
 
 ```bash
-# Run partial pipeline (requires cached reasoning.md and coding.pl files)
+# Run partial pipeline (requires cached reasoning.md, coding.pl, and feature-list.txt files)
 python main_dspy.py --mode partial
 
-# Useful for re-running feature extraction and grounding with different parameters
+# Test grounding with custom image
+python main_dspy.py --mode partial --image-path ./custom_image.jpg
+
+# Test with highlighted features only
 python main_dspy.py --mode partial --highlighted-only
 ```
 
 This mode is particularly useful when:
 
-- You want to experiment with different feature extraction or grounding parameters
-- The reasoning and coding stages are stable but you need to update the vision processing
-- You're developing or debugging the later stages of the pipeline
+- You want to test grounding on different images with the same feature set
+- You want to experiment with `--highlighted-only` mode
+- The reasoning, coding, and feature extraction are stable but you need to update the vision processing
+- You're developing or debugging the grounding and logic execution stages
 
 ### Output
 

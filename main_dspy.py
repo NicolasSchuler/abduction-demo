@@ -183,7 +183,9 @@ def extract_feature_list(problog_program: str) -> list[str]:
     logger.info("Stage 3: Extracting feature names from ProbLog program")
 
     try:
-        lm = dspy.LM(config.MODEL_FEATURE_EXTRACTION, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+        lm = dspy.LM(
+            config.MODEL_FEATURE_EXTRACTION, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY, cache=False
+        )
         dspy.configure(lm=lm)
 
         logger.debug(f"Using model: {config.MODEL_FEATURE_EXTRACTION}")
@@ -199,6 +201,9 @@ def extract_feature_list(problog_program: str) -> list[str]:
 
         # Validate extracted features
         validate_feature_list(features)
+
+        # Transform underscores to spaces
+        features = [feature.replace("_", " ") for feature in features]
 
         logger.info(f"Extracted {len(features)} features from ProbLog program")
         logger.debug(f"Features: {features[:5]}..." if len(features) > 5 else f"Features: {features}")
@@ -251,18 +256,33 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
         if highlighted_only:
-            grounding_desc = "A json mapping feature names to the probability of the feature being present in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
+            grounding_desc = """A json, mapping feature names to feature being HIGHLIGHTED IN RED AND present in the input image.
+        ONLY RED HIGHLIGHTED FEATURES ARE CONSIDERED! FEATURES THAT ARE NOT RED HIGHLIGHTED HAVE A '0.0' PROBABILITY! If it is too ambigious, omit the feature or give it a '0.0' propability.
+        """
+            image_desc = "Image to be analyzed for red highlighted features."
         else:
-            grounding_desc = "A json mapping feature names to the probability of the feature being present and highlighted in the input image. Example: {'feature_A': 0.9, 'feature_B': 0.1}"
+            grounding_desc = """A json, mapping feature names to the probability of the feature being present AND recognized in the input image.
+            Example:
+                {'feature_A': 0.9, 'feature_B': 0.1}
+            """
+            image_desc = "Image to be analyzed for present features"
 
-        lm = dspy.LM(config.MODEL_GROUNDING, api_base=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+        lm = dspy.LM(
+            config.MODEL_GROUNDING,
+            api_base=config.LLM_BASE_URL,
+            api_key=config.LLM_API_KEY,
+            cache=False,
+            max_tokens=None,
+        )
         dspy.configure(lm=lm)
 
         logger.debug(f"Using model: {config.MODEL_GROUNDING}")
 
         class Grounding(dspy.Signature):
+            """Matches features from a given list to the given image and returns the propability of the features being correctly detected."""
+
             feature_list: list[str] = dspy.InputField(desc="List of possible features present in the image")
-            image: dspy.Image = dspy.InputField(desc="Image to be analyzed for present features")
+            image: dspy.Image = dspy.InputField(desc=image_desc)
             grounding: dict[str, float] = dspy.OutputField(desc=grounding_desc)
 
         prompt = dspy.ChainOfThought(Grounding)
@@ -276,6 +296,9 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
         # Validate and sanitize grounding results
         validate_grounding_results(result)
         result = sanitize_grounding_results(result)
+
+        # Transform spaces back to underscores for ProbLog program compatibility
+        result = {feature.replace(" ", "_"): prob for feature, prob in result.items()}
 
         logger.info(f"Grounding completed: detected {len(result)} feature probabilities")
         # Log confidence statistics
@@ -464,20 +487,37 @@ def main(args=None):
         logger.error(f"Configuration validation failed: {e}")
         raise
 
-    # Load data
-    logger.info("Loading labeled images from data directory")
-    labeled_images = load_data()
-    logger.info(f"Loaded {len(labeled_images)} images")
+    # Handle custom image path or load from dataset
+    if args.image_path is not None:
+        # Use custom image path
+        logger.info(f"Using custom image path: {args.image_path}")
+        if not args.image_path.exists():
+            logger.error(f"Custom image file not found: {args.image_path}")
+            raise FileNotFoundError(f"Image file not found: {args.image_path}")
 
-    # Select image to process
-    if args.image_index >= len(labeled_images):
-        logger.error(f"IMAGE_INDEX {args.image_index} out of range (0-{len(labeled_images) - 1})")
-        raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images) - 1}")
+        # Create a simple object to hold image info (without labels)
+        class CustomImage:
+            def __init__(self, image_path: Path):
+                self.image_path = image_path
+                self.cl = "unknown"  # No label available for custom images
 
-    labeled_image = labeled_images[args.image_index]
-    logger.info(
-        f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
-    )
+        labeled_image = CustomImage(args.image_path)
+        logger.info(f"Processing custom image: {labeled_image.image_path.name}")
+    else:
+        # Load data from predefined dataset
+        logger.info("Loading labeled images from data directory")
+        labeled_images = load_data()
+        logger.info(f"Loaded {len(labeled_images)} images")
+
+        # Select image to process
+        if args.image_index >= len(labeled_images):
+            logger.error(f"IMAGE_INDEX {args.image_index} out of range (0-{len(labeled_images) - 1})")
+            raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images) - 1}")
+
+        labeled_image = labeled_images[args.image_index]
+        logger.info(
+            f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
+        )
 
     if args.mode == "testing":
         logger.info("Running in TESTING mode (using cached results)")
@@ -492,6 +532,9 @@ def main(args=None):
             validate_feature_list(feature_list)
             validate_grounding_results(grounding_res)
             grounding_res = sanitize_grounding_results(grounding_res)
+
+            # Transform underscores to spaces in feature names
+            feature_list = [feature.replace("_", " ") for feature in feature_list]
 
             logger.debug("Loaded and validated all cached results")
         except FileNotFoundError as e:
@@ -510,20 +553,21 @@ def main(args=None):
             # Ensure output directory exists
             config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-            # Load cached reasoning and coding results
+            # Load cached reasoning, coding, and features
             reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
             problog_program = config.CACHED_CODING_FILE.open("r").read()
+            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.open("r").readlines()]
 
             # Validate loaded cached data
             validate_problog_program(problog_program)
-            logger.debug("Loaded and validated cached reasoning and coding results")
+            validate_feature_list(feature_list)
 
-            # Run remaining pipeline steps
-            feature_list = extract_feature_list(problog_program=problog_program)
-            with open(file=config.CACHED_FEATURES_FILE, mode="w") as f:
-                f.write("\n".join(feature_list))
-            logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
+            # Transform underscores to spaces in feature names
+            feature_list = [feature.replace("_", " ") for feature in feature_list]
 
+            logger.debug("Loaded and validated cached reasoning, coding, and features")
+
+            # Run grounding on the image
             grounding_res = grounding(
                 feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
             )
@@ -533,7 +577,7 @@ def main(args=None):
 
         except FileNotFoundError as e:
             logger.error(f"Cached file not found: {e}")
-            logger.error("Please run with --mode=full first to generate reasoning and coding results")
+            logger.error("Please run with --mode=full first to generate reasoning, coding, and feature results")
             raise
         except (RuntimeError, ValidationError) as e:
             logger.error(f"Pipeline failed: {e}")
@@ -589,7 +633,8 @@ def main(args=None):
     logger.info(f"Dog Probability: {p_dog:.4f}")
     predicted = "cat" if p_cat > p_dog else "dog"
     logger.info(f"Predicted: {predicted}")
-    logger.info(f"Correct: {'✓' if predicted == labeled_image.cl else '✗'}")
+    if labeled_image.cl != "unknown":
+        logger.info(f"Correct: {'✓' if predicted == labeled_image.cl else '✗'}")
     logger.info("=" * 80)
     logger.info("Abduction Demo Complete")
     logger.info("=" * 80)
@@ -657,6 +702,13 @@ def parse_args():
         action="store_true",
         default=False,
         help="Only consider highlighted features in grounding (default: consider all features)",
+    )
+
+    parser.add_argument(
+        "--image-path",
+        type=Path,
+        default=None,
+        help="Path to a custom image file to process (overrides --image-index)",
     )
 
     return parser.parse_args()
