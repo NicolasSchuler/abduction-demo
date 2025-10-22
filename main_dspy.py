@@ -318,6 +318,100 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
         raise RuntimeError(f"Grounding stage failed: {e}") from e
 
 
+def display_grounding_results(grounding_res: dict[str, float]) -> None:
+    """
+    Display grounding results in a fancy, visually appealing format.
+
+    This function emphasizes the VLM's output by grouping features by confidence
+    level and displaying them with visual indicators.
+
+    Args:
+        grounding_res: Dictionary mapping feature names to probability scores (0.0-1.0)
+    """
+    if not grounding_res:
+        logger.warning("No grounding results to display")
+        return
+
+    # Sort features by probability (descending)
+    sorted_features = sorted(grounding_res.items(), key=lambda x: x[1], reverse=True)
+
+    # Group features by confidence level
+    high_conf = [(f, p) for f, p in sorted_features if p >= 0.8]
+    medium_conf = [(f, p) for f, p in sorted_features if 0.5 <= p < 0.8]
+    low_conf = [(f, p) for f, p in sorted_features if p < 0.5]
+
+    # Helper function to create visual bar
+    def create_bar(probability: float, width: int = 40) -> str:
+        filled = int(probability * width)
+        empty = width - filled
+        return "█" * filled + "░" * empty
+
+    # Helper function to get confidence emoji
+    def get_emoji(probability: float) -> str:
+        if probability >= 0.9:
+            return "🔥"
+        elif probability >= 0.8:
+            return "✓"
+        elif probability >= 0.5:
+            return "◆"
+        else:
+            return "·"
+
+    # Display header
+    logger.info("")
+    logger.info("╔" + "═" * 78 + "╗")
+    logger.info("║" + " " * 22 + "🤖 VISION-LANGUAGE MODEL OUTPUT 🤖" + " " * 22 + "║")
+    logger.info("║" + " " * 26 + "Stage 4: Feature Grounding" + " " * 26 + "║")
+    logger.info("╚" + "═" * 78 + "╝")
+    logger.info("")
+    logger.info(f"Model: {config.MODEL_GROUNDING}")
+    logger.info(f"Total features analyzed: {len(grounding_res)}")
+    logger.info("")
+
+    # Display HIGH confidence features
+    if high_conf:
+        logger.info("━" * 80)
+        logger.info(f"🔥 HIGH CONFIDENCE DETECTIONS (≥0.80) - {len(high_conf)} features")
+        logger.info("━" * 80)
+        for feature, prob in high_conf:
+            emoji = get_emoji(prob)
+            bar = create_bar(prob)
+            # Convert underscores to spaces for display
+            display_name = feature.replace("_", " ").title()
+            logger.info(f"{emoji} {display_name:<35} {prob:.3f} │{bar}│")
+        logger.info("")
+
+    # Display MEDIUM confidence features
+    if medium_conf:
+        logger.info("─" * 80)
+        logger.info(f"◆ MEDIUM CONFIDENCE DETECTIONS (0.50-0.79) - {len(medium_conf)} features")
+        logger.info("─" * 80)
+        for feature, prob in medium_conf:
+            emoji = get_emoji(prob)
+            bar = create_bar(prob)
+            display_name = feature.replace("_", " ").title()
+            logger.info(f"{emoji} {display_name:<35} {prob:.3f} │{bar}│")
+        logger.info("")
+
+    # Display LOW confidence features (collapsed/summary)
+    if low_conf:
+        logger.info("·" * 80)
+        logger.info(f"· LOW CONFIDENCE DETECTIONS (<0.50) - {len(low_conf)} features")
+        logger.info("·" * 80)
+        # Show top 5 low confidence features
+        for feature, prob in low_conf[:5]:
+            emoji = get_emoji(prob)
+            bar = create_bar(prob)
+            display_name = feature.replace("_", " ").title()
+            logger.info(f"{emoji} {display_name:<35} {prob:.3f} │{bar}│")
+        if len(low_conf) > 5:
+            logger.info(f"  ... and {len(low_conf) - 5} more low-confidence features")
+        logger.info("")
+
+    logger.info("=" * 80)
+    logger.info("")
+
+
 def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> tuple[float, float]:
     """
     Execute a ProbLog program with evidence from grounding results.
@@ -571,6 +665,10 @@ def main(args=None):
             grounding_res = grounding(
                 feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
             )
+
+            # Display fancy grounding results
+            display_grounding_results(grounding_res)
+
             with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
                 json.dump(grounding_res, f, indent=2)
             logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
@@ -608,6 +706,10 @@ def main(args=None):
             grounding_res = grounding(
                 feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
             )
+
+            # Display fancy grounding results
+            display_grounding_results(grounding_res)
+
             with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
                 json.dump(grounding_res, f, indent=2)
             logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
