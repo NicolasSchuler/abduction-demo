@@ -10,7 +10,7 @@ This repository contains the reference implementation for the AISoLA 2025 paper:
 
 **Authors:**
 
-- Nicolas Sebastian Schuler (nicolas.schuler@student.kit.edu)
+- Nicolas Sebastian Schuler (nicolas.schuler@kit.edu)
 - Vincenzo Scotti (vincenzo.scotti@kit.edu)
 - Matteo Camilli (matteo.camilli@polimi.it)
 - Raffaela Mirandola (raffaela.mirandola@kit.edu)
