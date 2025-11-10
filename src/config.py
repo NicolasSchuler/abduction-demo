@@ -6,8 +6,18 @@ file paths, processing parameters, and runtime options. Values can be overridden
 via environment variables.
 """
 
+import logging
 import os
 from pathlib import Path
+
+# Initialize module logger early so later warnings (e.g., missing model file) work reliably
+logger = logging.getLogger(__name__)
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+    logger.warning("OpenCV not available, some colormap features will be disabled")
 
 # =============================================================================
 # Runtime Configuration
@@ -122,6 +132,62 @@ MIN_PROBABILITY = 0.0
 MAX_PROBABILITY = 1.0
 
 # =============================================================================
+# CNN + XAI Configuration
+# =============================================================================
+
+# Enable/disable CNN preprocessing
+ENABLE_CNN_PREPROCESSING = int(os.getenv("ENABLE_CNN_PREPROCESSING", "1"))
+
+# CNN Model Configuration
+CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "")  # Empty string uses ImageNet weights
+CNN_INPUT_SIZE = (224, 224)
+CNN_BATCH_SIZE = int(os.getenv("CNN_BATCH_SIZE", "1"))
+CNN_DEVICE = os.getenv("CNN_DEVICE", "auto")  # auto, cuda, cpu, mps
+
+# CNN confidence thresholds
+CNN_CONFIDENCE_THRESHOLD = float(os.getenv("CNN_CONFIDENCE_THRESHOLD", "0.7"))
+# Removed unused CNN_CAT_PROB_THRESHOLD (previously default 0.5)
+
+# XAI Methods Configuration
+XAI_METHODS = os.getenv("XAI_METHODS", "grad_cam,integrated_grad,shap").split(",")
+XAI_SAVE_EXPLANATIONS = int(os.getenv("XAI_SAVE_EXPLANATIONS", "1"))
+XAI_OUTPUT_DIR = RESULTS_DIR / "xai_explanations"
+XAI_OVERLAY_ALPHA = float(os.getenv("XAI_OVERLAY_ALPHA", "0.6"))
+
+# XAI thresholds and parameters
+XAI_ATTRIBUTION_THRESHOLD = float(os.getenv("XAI_ATTRIBUTION_THRESHOLD", "0.2"))
+XAI_CAM_THRESHOLD = float(os.getenv("XAI_CAM_THRESHOLD", "0.3"))
+XAI_INTEGRATED_GRAD_STEPS = int(os.getenv("XAI_INTEGRATED_GRAD_STEPS", "50"))
+
+# Image Enhancement Configuration
+ENHANCEMENT_SAVE_IMAGES = int(os.getenv("ENHANCEMENT_SAVE_IMAGES", "1"))
+ENHANCEMENT_OUTPUT_DIR = RESULTS_DIR / "enhanced_images"
+ENHANCEMENT_STYLES = os.getenv(
+    "ENHANCEMENT_STYLES",
+    "heatmap_overlay,spotlight_heatmap,composite_overlay,color_overlay,blur_background,desaturate_background",
+).split(",")
+
+# Enhancement overlay parameters
+ENHANCEMENT_FOREGROUND_ALPHA = float(os.getenv("ENHANCEMENT_FOREGROUND_ALPHA", "0.6"))
+ENHANCEMENT_BACKGROUND_ALPHA = float(os.getenv("ENHANCEMENT_BACKGROUND_ALPHA", "0.3"))
+ENHANCEMENT_BLUR_INTENSITY = (35, 35)
+ENHANCEMENT_DARKNESS_FACTOR = float(os.getenv("ENHANCEMENT_DARKNESS_FACTOR", "0.4"))
+
+# Preprocessing integration options
+USE_ENHANCED_IMAGE_IN_PIPELINE = int(os.getenv("USE_ENHANCED_IMAGE_IN_PIPELINE", "1"))
+SAVE_CNN_METADATA = int(os.getenv("SAVE_CNN_METADATA", "1"))
+CNN_METADATA_OUTPUT_DIR = RESULTS_DIR / "cnn_metadata"
+
+# Colormap preferences for different classes (guarded for cv2 availability)
+if cv2 is not None:
+    XAI_CAT_COLORMAP = cv2.COLORMAP_HOT
+    XAI_DOG_COLORMAP = cv2.COLORMAP_COOL
+else:
+    # Fallback to integer codes (OpenCV internally maps these; kept for downstream use)
+    XAI_CAT_COLORMAP = 2  # HOT
+    XAI_DOG_COLORMAP = 8  # COOL
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -163,6 +229,71 @@ def validate_config():
     if IMAGE_QUALITY < 1 or IMAGE_QUALITY > 100:
         raise ValueError(f"IMAGE_QUALITY must be in range [1, 100], got: {IMAGE_QUALITY}")
 
+    # Validate CNN/XAI configuration
+    if ENABLE_CNN_PREPROCESSING not in [0, 1]:
+        raise ValueError(f"ENABLE_CNN_PREPROCESSING must be 0 or 1, got: {ENABLE_CNN_PREPROCESSING}")
+
+    if CNN_BATCH_SIZE < 1:
+        raise ValueError(f"CNN_BATCH_SIZE must be >= 1, got: {CNN_BATCH_SIZE}")
+
+    if CNN_DEVICE not in ["auto", "cuda", "cpu", "mps"]:
+        raise ValueError(f"CNN_DEVICE must be one of 'auto', 'cuda', 'cpu', 'mps', got: {CNN_DEVICE}")
+
+    if not (0.0 <= CNN_CONFIDENCE_THRESHOLD <= 1.0):
+        raise ValueError(f"CNN_CONFIDENCE_THRESHOLD must be in range [0.0, 1.0], got: {CNN_CONFIDENCE_THRESHOLD}")
+
+    # Removed validation for unused CNN_CAT_PROB_THRESHOLD
+
+    if not (0.0 <= XAI_OVERLAY_ALPHA <= 1.0):
+        raise ValueError(f"XAI_OVERLAY_ALPHA must be in range [0.0, 1.0], got: {XAI_OVERLAY_ALPHA}")
+
+    if not (0.0 <= XAI_ATTRIBUTION_THRESHOLD <= 1.0):
+        raise ValueError(f"XAI_ATTRIBUTION_THRESHOLD must be in range [0.0, 1.0], got: {XAI_ATTRIBUTION_THRESHOLD}")
+
+    if not (0.0 <= XAI_CAM_THRESHOLD <= 1.0):
+        raise ValueError(f"XAI_CAM_THRESHOLD must be in range [0.0, 1.0], got: {XAI_CAM_THRESHOLD}")
+
+    if XAI_INTEGRATED_GRAD_STEPS < 1:
+        raise ValueError(f"XAI_INTEGRATED_GRAD_STEPS must be >= 1, got: {XAI_INTEGRATED_GRAD_STEPS}")
+
+    if not (0.0 <= ENHANCEMENT_FOREGROUND_ALPHA <= 1.0):
+        raise ValueError(
+            f"ENHANCEMENT_FOREGROUND_ALPHA must be in range [0.0, 1.0], got: {ENHANCEMENT_FOREGROUND_ALPHA}"
+        )
+
+    if not (0.0 <= ENHANCEMENT_BACKGROUND_ALPHA <= 1.0):
+        raise ValueError(
+            f"ENHANCEMENT_BACKGROUND_ALPHA must be in range [0.0, 1.0], got: {ENHANCEMENT_BACKGROUND_ALPHA}"
+        )
+
+    if not (0.0 <= ENHANCEMENT_DARKNESS_FACTOR <= 1.0):
+        raise ValueError(f"ENHANCEMENT_DARKNESS_FACTOR must be in range [0.0, 1.0], got: {ENHANCEMENT_DARKNESS_FACTOR}")
+
+    # Validate XAI methods
+    valid_xai_methods = ["grad_cam", "integrated_grad", "shap", "saliency", "layer_cam", "occlusion"]
+    for method in XAI_METHODS:
+        if method.strip() not in valid_xai_methods:
+            raise ValueError(f"Invalid XAI method: {method}. Valid methods: {valid_xai_methods}")
+
+    # Validate enhancement styles
+    valid_enhancement_styles = [
+        "heatmap_overlay",
+        "spotlight_heatmap",
+        "composite_overlay",
+        "color_overlay",
+        "blur_background",
+        "desaturate_background",
+    ]
+    for style in ENHANCEMENT_STYLES:
+        if style.strip() not in valid_enhancement_styles:
+            raise ValueError(f"Invalid enhancement style: {style}. Valid styles: {valid_enhancement_styles}")
+
+    # Check CNN model file if specified
+    if CNN_MODEL_PATH and CNN_MODEL_PATH.strip():
+        model_path = Path(CNN_MODEL_PATH)
+        if not model_path.exists():
+            logger.warning(f"CNN model file not found: {model_path}. Using ImageNet weights instead.")
+
 
 def print_config():
     """Print current configuration for debugging."""
@@ -182,6 +313,18 @@ def print_config():
     print(f"Epsilon: {EPSILON_PROB}")
     print(f"Image Processing: {IMAGE_MAX_WIDTH}x{IMAGE_MAX_HEIGHT} @ {IMAGE_QUALITY}% quality")
     print(f"Log Level: {LOG_LEVEL}")
+    print()
+
+    # CNN + XAI Configuration
+    print("CNN + XAI Configuration:")
+    print(f"CNN Preprocessing: {'ENABLED' if ENABLE_CNN_PREPROCESSING else 'DISABLED'}")
+    if ENABLE_CNN_PREPROCESSING:
+        print(f"CNN Model: {'Custom: ' + CNN_MODEL_PATH if CNN_MODEL_PATH else 'ImageNet-pretrained ResNet-50'}")
+        print(f"CNN Device: {CNN_DEVICE}")
+        print(f"CNN Confidence Threshold: {CNN_CONFIDENCE_THRESHOLD}")
+        print(f"XAI Methods: {', '.join(XAI_METHODS)}")
+        print(f"Enhancement Styles: {', '.join(ENHANCEMENT_STYLES)}")
+        print(f"Use Enhanced Images: {'YES' if USE_ENHANCED_IMAGE_IN_PIPELINE else 'NO'}")
     print("=" * 80)
 
 

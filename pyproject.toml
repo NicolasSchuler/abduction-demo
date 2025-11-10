@@ -21,6 +21,12 @@ dependencies = [
     "langchain-community>=0.3.27",
     "pyswip>=0.3.3",
     "problog>=2.2.7",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "captum>=0.6.0",
+    "pytorch-grad-cam>=1.4.6",
+    "shap>=0.42.1",
+    "dspy-ai"
 ]
 
 [tool.uv]

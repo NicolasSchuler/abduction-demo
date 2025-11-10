@@ -6,6 +6,7 @@ from pathlib import Path
 import dspy
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+
 from langchain_openai import ChatOpenAI
 from problog import get_evaluatable
 from problog.program import PrologString
@@ -27,6 +28,49 @@ logging.basicConfig(
     format=config.LOG_FORMAT,
 )
 logger = logging.getLogger(__name__)
+
+# Import CNN + XAI preprocessing pipeline (EfficientNet-based)
+try:
+    from src.preprocessing.preprocessing_pipeline import PreprocessingPipeline
+
+    CNN_PREPROCESSING_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"CNN + XAI preprocessing not available: {e}")
+    CNN_PREPROCESSING_AVAILABLE = False
+
+
+def log_cnn_xai_context(preprocessing_result, cnn_classification, stage_label: str):
+    """
+    Consolidated logging for CNN/XAI context to avoid duplication.
+    """
+    if not cnn_classification and not (preprocessing_result and preprocessing_result.get("explanations")):
+        return
+    logger.info("-" * 80)
+    logger.info(f"CNN/XAI Context ({stage_label})")
+    if cnn_classification:
+        logger.info(
+            "CNN Baseline: %s (confidence: %.3f)",
+            cnn_classification["predicted_class"],
+            cnn_classification["confidence"],
+        )
+        logger.info("CNN Probabilities: %s", cnn_classification["probabilities"])
+    if preprocessing_result and preprocessing_result.get("explanations"):
+        xai_methods_used = [
+            m
+            for m in preprocessing_result["explanations"].keys()
+            if m not in {"image_name", "target_class", "target_index", "original_image", "input_tensor"}
+        ]
+        if xai_methods_used:
+            logger.info("XAI Methods Applied: %s", xai_methods_used)
+
+
+def build_enhanced_temp_path(stem: str) -> Path:
+    """
+    Build (and ensure) a temp path for an enhanced image tied to the current image stem.
+    """
+    tmp_dir = config.RESULTS_DIR / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir / f"{stem}_enhanced.png"
 
 
 def reasoning():
@@ -613,13 +657,78 @@ def main(args=None):
             f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
         )
 
+    # CNN + XAI Preprocessing Stage (conditionally enabled; skipped in testing mode unless --force-preprocessing is used)
+    preprocessing_result = None
+    pipeline_image_path = labeled_image.image_path  # Default to original image
+    cnn_classification = None  # Persist CNN classification for final reporting
+
+    run_preprocessing = (
+        CNN_PREPROCESSING_AVAILABLE
+        and config.ENABLE_CNN_PREPROCESSING
+        and (args.mode != "testing" or args.force_preprocessing)
+        and not args.disable_cnn
+    )
+
+    if run_preprocessing:
+        logger.info("=" * 80)
+        logger.info("CNN + XAI PREPROCESSING STAGE")
+        logger.info("=" * 80)
+
+        try:
+            # Initialize preprocessing pipeline with command-line options (use config.RESULTS_DIR for consistency)
+            preprocessing_pipeline = PreprocessingPipeline(
+                enable_cnn=not args.disable_cnn,
+                enable_xai=not args.disable_xai,
+                enable_enhancement=not args.disable_enhancement,
+            )
+
+            # Process the image
+            preprocessing_result = preprocessing_pipeline.process_image(
+                labeled_image.image_path, save_prefix=labeled_image.image_path.stem
+            )
+
+            # Display preprocessing results
+            if preprocessing_result["classification"]:
+                cls_result = preprocessing_result["classification"]
+                cnn_classification = cls_result  # persist for final printing
+                logger.info(
+                    f"CNN Classification: {cls_result['predicted_class']} (confidence: {cls_result['confidence']:.3f})"
+                )
+                logger.info(f"Probabilities: {cls_result['probabilities']}")
+
+            if preprocessing_result["explanations"]:
+                methods = list(preprocessing_result["explanations"].keys())
+                logger.info(f"XAI explanations generated: {methods}")
+
+            if preprocessing_result["enhanced_images"]:
+                styles = list(preprocessing_result["enhanced_images"].keys())
+                logger.info(f"Image enhancements generated: {styles}")
+
+            # Use enhanced image for pipeline if configured
+            if config.USE_ENHANCED_IMAGE_IN_PIPELINE and preprocessing_result.get("pipeline_image"):
+                enhanced_image = preprocessing_result["pipeline_image"]
+                temp_path = build_enhanced_temp_path(labeled_image.image_path.stem)
+                enhanced_image.save(temp_path)
+                pipeline_image_path = temp_path
+                logger.info(f"Using enhanced image for pipeline: {temp_path}")
+
+        except Exception as e:
+            logger.error(f"CNN + XAI preprocessing failed: {e}")
+            logger.info("Continuing with original image for pipeline")
+
+    else:
+        logger.info(
+            "Skipping CNN + XAI preprocessing (disabled/unavailable or suppressed in testing mode). "
+            "Use --force-preprocessing to run it in testing mode."
+        )
+
     if args.mode == "testing":
         logger.info("Running in TESTING mode (using cached results)")
         try:
-            reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
-            problog_program = config.CACHED_CODING_FILE.open("r").read()
-            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.open("r").readlines()]
-            grounding_res = json.loads(config.CACHED_GROUNDING_FILE.open("r").read())
+            reasoning_description = config.CACHED_REASONING_FILE.read_text()
+            problog_program = config.CACHED_CODING_FILE.read_text()
+            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
+            grounding_res = json.loads(config.CACHED_GROUNDING_FILE.read_text())
 
             # Validate loaded data
             validate_problog_program(problog_program)
@@ -648,9 +757,9 @@ def main(args=None):
             config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
             # Load cached reasoning, coding, and features
-            reasoning_description = config.CACHED_REASONING_FILE.open("r").read()
-            problog_program = config.CACHED_CODING_FILE.open("r").read()
-            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.open("r").readlines()]
+            reasoning_description = config.CACHED_REASONING_FILE.read_text()
+            problog_program = config.CACHED_CODING_FILE.read_text()
+            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
 
             # Validate loaded cached data
             validate_problog_program(problog_program)
@@ -661,16 +770,16 @@ def main(args=None):
 
             logger.debug("Loaded and validated cached reasoning, coding, and features")
 
-            # Run grounding on the image
+            # Run grounding on the image (original or enhanced)
             grounding_res = grounding(
-                feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
+                feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=args.highlighted_only
             )
 
             # Display fancy grounding results
             display_grounding_results(grounding_res)
+            log_cnn_xai_context(preprocessing_result, cnn_classification, "partial grounding")
 
-            with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
-                json.dump(grounding_res, f, indent=2)
+            config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
             logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
 
         except FileNotFoundError as e:
@@ -688,30 +797,27 @@ def main(args=None):
             config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
             reasoning_description = reasoning()
-            with open(config.CACHED_REASONING_FILE, "w") as f:
-                f.write(reasoning_description)
+            config.CACHED_REASONING_FILE.write_text(reasoning_description)
             logger.debug(f"Saved reasoning to {config.CACHED_REASONING_FILE}")
 
             # ONLY FOR DEMONSTRATION PURPOSES
             problog_program = coding(reasoning_description)
-            with open(config.CACHED_CODING_FILE, "w") as f:
-                f.write(problog_program)
+            config.CACHED_CODING_FILE.write_text(problog_program)
             logger.debug(f"Saved ProbLog program to {config.CACHED_CODING_FILE}")
 
             feature_list = extract_feature_list(problog_program=problog_program)
-            with open(file=config.CACHED_FEATURES_FILE, mode="w") as f:
-                f.write("\n".join(feature_list))
+            config.CACHED_FEATURES_FILE.write_text("\n".join(feature_list))
             logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
 
             grounding_res = grounding(
-                feature_list=feature_list, image_path=labeled_image.image_path, highlighted_only=args.highlighted_only
+                feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=args.highlighted_only
             )
 
             # Display fancy grounding results
             display_grounding_results(grounding_res)
+            log_cnn_xai_context(preprocessing_result, cnn_classification, "full grounding")
 
-            with open(file=config.CACHED_GROUNDING_FILE, mode="w") as f:
-                json.dump(grounding_res, f, indent=2)
+            config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
             logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
 
         except NotImplementedError as e:
@@ -734,9 +840,14 @@ def main(args=None):
     logger.info(f"Cat Probability: {p_cat:.4f}")
     logger.info(f"Dog Probability: {p_dog:.4f}")
     predicted = "cat" if p_cat > p_dog else "dog"
-    logger.info(f"Predicted: {predicted}")
+    logger.info(f"Predicted (ProbLog Inference): {predicted}")
     if labeled_image.cl != "unknown":
         logger.info(f"Correct: {'✓' if predicted == labeled_image.cl else '✗'}")
+    # Comparative summary with CNN baseline (if available)
+    log_cnn_xai_context(preprocessing_result, cnn_classification, "final")
+    if cnn_classification:
+        agreement = predicted == cnn_classification["predicted_class"]
+        logger.info(f"Model Agreement: {'✓ AGREEMENT' if agreement else '✗ DISAGREEMENT'}")
     logger.info("=" * 80)
     logger.info("Abduction Demo Complete")
     logger.info("=" * 80)
@@ -775,7 +886,7 @@ def parse_args():
         "--output-dir",
         type=Path,
         default=config.RESULTS_DIR,
-        help="Directory to save results",
+        help="Directory to save results (also used by CNN/XAI preprocessing)",
     )
 
     parser.add_argument(
@@ -813,6 +924,42 @@ def parse_args():
         help="Path to a custom image file to process (overrides --image-index)",
     )
 
+    # CNN + XAI preprocessing arguments
+    parser.add_argument(
+        "--disable-cnn",
+        action="store_true",
+        default=False,
+        help="Disable CNN + XAI preprocessing (default: enabled if available)",
+    )
+
+    parser.add_argument(
+        "--disable-xai",
+        action="store_true",
+        default=False,
+        help="Disable XAI explanations (default: enabled if CNN is enabled)",
+    )
+
+    parser.add_argument(
+        "--disable-enhancement",
+        action="store_true",
+        default=False,
+        help="Disable image enhancement (default: enabled if XAI is enabled)",
+    )
+
+    parser.add_argument(
+        "--use-original-image",
+        action="store_true",
+        default=False,
+        help="Use original image in pipeline instead of enhanced image (default: use enhanced if available)",
+    )
+
+    parser.add_argument(
+        "--force-preprocessing",
+        action="store_true",
+        default=False,
+        help="Force running CNN+XAI preprocessing in testing mode (normally skipped when --mode=testing)",
+    )
+
     return parser.parse_args()
 
 
@@ -831,8 +978,17 @@ if __name__ == "__main__":
     config.LOG_LEVEL = args.log_level
     config.LLM_BASE_URL = args.llm_base_url
 
+    # Update CNN + XAI configuration based on arguments
+    if args.disable_cnn:
+        config.ENABLE_CNN_PREPROCESSING = 0
+    if args.use_original_image:
+        config.USE_ENHANCED_IMAGE_IN_PIPELINE = 0
+
     # Update logging level
     logging.getLogger().setLevel(getattr(logging, config.LOG_LEVEL))
+
+    if args.force_preprocessing and args.mode == "testing":
+        logger.info("Force preprocessing enabled in testing mode.")
 
     # Show config if requested
     if args.show_config:
