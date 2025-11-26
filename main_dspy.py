@@ -1,12 +1,13 @@
 import argparse
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import dspy
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-
 from langchain_openai import ChatOpenAI
 from problog import get_evaluatable
 from problog.program import PrologString
@@ -37,6 +38,59 @@ try:
 except ImportError as e:
     logger.warning(f"CNN + XAI preprocessing not available: {e}")
     CNN_PREPROCESSING_AVAILABLE = False
+
+
+@dataclass
+class RuntimeConfig:
+    """
+    Runtime configuration for pipeline execution.
+
+    This dataclass holds all runtime parameters that can be set from command-line
+    arguments, keeping the config module immutable after import.
+
+    Attributes:
+        mode: Operation mode ('testing', 'partial', or 'full')
+        image_index: Index of image to process from dataset
+        output_dir: Directory to save results
+        log_level: Logging level
+        llm_base_url: Base URL for LLM server
+        image_path: Optional custom image path (overrides image_index)
+        highlighted_only: Only consider highlighted features in grounding
+        disable_cnn: Disable CNN preprocessing
+        disable_xai: Disable XAI explanations
+        disable_enhancement: Disable image enhancement
+        use_original_image: Use original image instead of enhanced
+        force_preprocessing: Force preprocessing even in testing mode
+    """
+
+    mode: str
+    image_index: int
+    output_dir: Path
+    log_level: str
+    llm_base_url: str
+    image_path: Optional[Path] = None
+    highlighted_only: bool = False
+    disable_cnn: bool = False
+    disable_xai: bool = False
+    disable_enhancement: bool = False
+    use_original_image: bool = False
+    force_preprocessing: bool = False
+
+
+def cleanup_temp_files(temp_paths: list[Path]) -> None:
+    """
+    Clean up temporary files created during pipeline execution.
+
+    Args:
+        temp_paths: List of Path objects to temporary files to delete
+    """
+    for path in temp_paths:
+        try:
+            if path.exists():
+                path.unlink()
+                logger.debug(f"Cleaned up temp file: {path}")
+        except OSError as e:
+            logger.warning(f"Failed to clean up temp file {path}: {e}")
 
 
 def log_cnn_xai_context(preprocessing_result, cnn_classification, stage_label: str):
@@ -168,14 +222,36 @@ def coding(description: str):
             """
             Placeholder for Gemini API implementation.
 
-            TODO: Implement actual Gemini API call. For now, this will cause an error
-            if coding stage is run without cached results.
+            IMPORTANT: This function is NOT implemented. To use --mode=full, you must either:
+            1. Implement this function with a valid LLM API call (see example below), OR
+            2. Use --mode=testing or --mode=partial with pre-cached results
+
+            Example implementation using langchain-google-genai:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-pro",
+                    google_api_key=os.getenv("GOOGLE_API_KEY"),
+                )
+
+            Or use the local LLM server (like reasoning stage):
+                return ChatOpenAI(
+                    model=config.MODEL_CODING,
+                    base_url=config.LLM_BASE_URL,
+                    api_key=config.LLM_API_KEY,
+                )
+
+            Returns:
+                A LangChain chat model compatible with ChatPromptTemplate.
+
+            Raises:
+                NotImplementedError: Always raised until this function is implemented.
             """
-            logger.error("Gemini API not implemented. Please use TESTING=1 mode or implement this function.")
             raise NotImplementedError(
-                "Gemini model is not implemented. "
-                "Please run in TESTING mode (TESTING=1) or implement the gemini() function "
-                "with a valid LLM API call (e.g., Google's Gemini API or alternative)."
+                "Gemini model is not implemented.\n"
+                "To run the coding stage (--mode=full), either:\n"
+                "  1. Implement gemini() with Google's Gemini API or alternative LLM\n"
+                "  2. Use --mode=testing or --mode=partial with pre-cached results\n"
+                f"See config.MODEL_CODING (current: {config.MODEL_CODING}) for expected model."
             )
 
         model_coding = gemini()
@@ -300,8 +376,8 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
         if highlighted_only:
-            grounding_desc = """A json, mapping feature names to feature being HIGHLIGHTED IN RED AND present in the input image.
-        ONLY RED HIGHLIGHTED FEATURES ARE CONSIDERED! FEATURES THAT ARE NOT RED HIGHLIGHTED HAVE A '0.0' PROBABILITY! If it is too ambigious, omit the feature or give it a '0.0' propability.
+            grounding_desc = """A json, mapping feature names to feature being FULLY HIGHLIGHTED IN RED AND present in the input image.
+        ONLY FULLY RED HIGHLIGHTED FEATURES ARE CONSIDERED! FEATURES THAT ARE NOT FULLY RED HIGHLIGHTED HAVE A '0.0' PROBABILITY! If it is too ambigious, omit the feature or give it a '0.0' propability.
         """
             image_desc = "Image to be analyzed for red highlighted features."
         else:
@@ -583,7 +659,225 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
         return 0.5, 0.5
 
 
-def main(args=None):
+def display_classification_results(
+    image_name: str,
+    actual_label: str,
+    p_cat: float,
+    p_dog: float,
+    preprocessing_result: dict | None,
+    cnn_classification: dict | None,
+) -> str:
+    """
+    Display final classification results in a formatted output.
+
+    Args:
+        image_name: Name of the processed image file
+        actual_label: Ground truth label (or "unknown")
+        p_cat: Probability of cat classification
+        p_dog: Probability of dog classification
+        preprocessing_result: Results from CNN+XAI preprocessing (for context)
+        cnn_classification: CNN classification result (for comparison)
+
+    Returns:
+        Predicted class ("cat" or "dog")
+    """
+    logger.info("=" * 80)
+    logger.info("CLASSIFICATION RESULTS")
+    logger.info("=" * 80)
+    logger.info(f"Image: {image_name}")
+    logger.info(f"Actual Label: {actual_label}")
+    logger.info(f"Cat Probability: {p_cat:.4f}")
+    logger.info(f"Dog Probability: {p_dog:.4f}")
+
+    predicted = "cat" if p_cat > p_dog else "dog"
+    logger.info(f"Predicted (ProbLog Inference): {predicted}")
+
+    if actual_label != "unknown":
+        logger.info(f"Correct: {'YES' if predicted == actual_label else 'NO'}")
+
+    # Comparative summary with CNN baseline (if available)
+    log_cnn_xai_context(preprocessing_result, cnn_classification, "final")
+    if cnn_classification:
+        agreement = predicted == cnn_classification.get("predicted_class")
+        logger.info(f"Model Agreement: {'AGREEMENT' if agreement else 'DISAGREEMENT'}")
+
+    logger.info("=" * 80)
+    logger.info("Abduction Demo Complete")
+    logger.info("=" * 80)
+
+    return predicted
+
+
+def run_testing_mode() -> tuple[str, str, list[str], dict[str, float]]:
+    """
+    Execute testing mode: load all results from cached files.
+
+    Returns:
+        Tuple of (reasoning_description, problog_program, feature_list, grounding_res)
+
+    Raises:
+        FileNotFoundError: If cached files are missing
+        ValidationError: If cached data is invalid
+    """
+    logger.info("Running in TESTING mode (using cached results)")
+
+    reasoning_description = config.CACHED_REASONING_FILE.read_text()
+    problog_program = config.CACHED_CODING_FILE.read_text()
+    feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
+    grounding_res = json.loads(config.CACHED_GROUNDING_FILE.read_text())
+
+    # Validate loaded data
+    validate_problog_program(problog_program)
+    validate_feature_list(feature_list)
+    validate_grounding_results(grounding_res)
+    grounding_res = sanitize_grounding_results(grounding_res)
+
+    # Transform underscores to spaces in feature names
+    feature_list = [feature.replace("_", " ") for feature in feature_list]
+
+    logger.debug("Loaded and validated all cached results")
+    return reasoning_description, problog_program, feature_list, grounding_res
+
+
+def run_partial_mode(
+    pipeline_image_path: Path,
+    highlighted_only: bool,
+    preprocessing_result: dict | None,
+    cnn_classification: dict | None,
+) -> tuple[str, str, list[str], dict[str, float]]:
+    """
+    Execute partial mode: load cached reasoning/coding, run live grounding.
+
+    Args:
+        pipeline_image_path: Path to image for grounding (original or enhanced)
+        highlighted_only: Only consider highlighted features
+        preprocessing_result: Results from CNN+XAI preprocessing (for logging)
+        cnn_classification: CNN classification result (for logging)
+
+    Returns:
+        Tuple of (reasoning_description, problog_program, feature_list, grounding_res)
+
+    Raises:
+        FileNotFoundError: If cached files are missing
+        ValidationError: If validation fails
+        RuntimeError: If grounding fails
+    """
+    logger.info("Running in PARTIAL mode (starting after coding step)")
+
+    # Ensure output directory exists
+    config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Load cached reasoning, coding, and features
+    reasoning_description = config.CACHED_REASONING_FILE.read_text()
+    problog_program = config.CACHED_CODING_FILE.read_text()
+    feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
+
+    # Validate loaded cached data
+    validate_problog_program(problog_program)
+    validate_feature_list(feature_list)
+
+    # Transform underscores to spaces in feature names
+    feature_list = [feature.replace("_", " ") for feature in feature_list]
+
+    logger.debug("Loaded and validated cached reasoning, coding, and features")
+
+    # Run grounding on the image (original or enhanced)
+    grounding_res = grounding(
+        feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=highlighted_only
+    )
+
+    # Display fancy grounding results
+    display_grounding_results(grounding_res)
+    log_cnn_xai_context(preprocessing_result, cnn_classification, "partial grounding")
+
+    config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
+    logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
+
+    return reasoning_description, problog_program, feature_list, grounding_res
+
+
+def run_full_mode(
+    pipeline_image_path: Path,
+    highlighted_only: bool,
+    preprocessing_result: dict | None,
+    cnn_classification: dict | None,
+) -> tuple[str, str, list[str], dict[str, float]]:
+    """
+    Execute full mode: run complete pipeline with live LLM inference.
+
+    Args:
+        pipeline_image_path: Path to image for grounding (original or enhanced)
+        highlighted_only: Only consider highlighted features
+        preprocessing_result: Results from CNN+XAI preprocessing (for logging)
+        cnn_classification: CNN classification result (for logging)
+
+    Returns:
+        Tuple of (reasoning_description, problog_program, feature_list, grounding_res)
+
+    Raises:
+        NotImplementedError: If Gemini API is not implemented
+        ValidationError: If validation fails
+        RuntimeError: If any pipeline stage fails
+    """
+    logger.info("Running in FULL PIPELINE mode (live LLM inference)")
+
+    # Ensure output directory exists
+    config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    reasoning_description = reasoning()
+    config.CACHED_REASONING_FILE.write_text(reasoning_description)
+    logger.debug(f"Saved reasoning to {config.CACHED_REASONING_FILE}")
+
+    # ONLY FOR DEMONSTRATION PURPOSES
+    problog_program = coding(reasoning_description)
+    config.CACHED_CODING_FILE.write_text(problog_program)
+    logger.debug(f"Saved ProbLog program to {config.CACHED_CODING_FILE}")
+
+    feature_list = extract_feature_list(problog_program=problog_program)
+    config.CACHED_FEATURES_FILE.write_text("\n".join(feature_list))
+    logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
+
+    grounding_res = grounding(
+        feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=highlighted_only
+    )
+
+    # Display fancy grounding results
+    display_grounding_results(grounding_res)
+    log_cnn_xai_context(preprocessing_result, cnn_classification, "full grounding")
+
+    config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
+    logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
+
+    return reasoning_description, problog_program, feature_list, grounding_res
+
+
+def create_runtime_config(args) -> RuntimeConfig:
+    """
+    Convert parsed arguments to RuntimeConfig dataclass.
+
+    Args:
+        args: Parsed command-line arguments from argparse
+
+    Returns:
+        RuntimeConfig instance with all runtime parameters
+    """
+    return RuntimeConfig(
+        mode=args.mode,
+        image_index=args.image_index,
+        output_dir=args.output_dir,
+        log_level=args.log_level,
+        llm_base_url=args.llm_base_url,
+        image_path=args.image_path,
+        highlighted_only=args.highlighted_only,
+        disable_cnn=args.disable_cnn,
+        disable_xai=args.disable_xai,
+        disable_enhancement=args.disable_enhancement,
+        use_original_image=args.use_original_image,
+        force_preprocessing=args.force_preprocessing,
+    )
+
+
+def main(runtime_config: RuntimeConfig):
     """
     Main pipeline orchestration function.
 
@@ -600,19 +894,15 @@ def main(args=None):
     - partial: Starts after coding step, uses cached reasoning and coding results
 
     Args:
-        args: Command-line arguments namespace. If None, will parse arguments.
+        runtime_config: Runtime configuration dataclass with all execution parameters.
 
-    Output:
-        Prints classification probabilities to console:
-        - Cat Probability: 0.0-1.0
-        - Dog Probability: 0.0-1.0
+    Returns:
+        Tuple of (cat_probability, dog_probability)
 
     Note:
-        Currently processes labeled_images[1]. Modify index to classify
-        different images from the dataset.
+        Uses runtime_config.image_index to select image from dataset,
+        or runtime_config.image_path for custom images.
     """
-    if args is None:
-        args = parse_args()
     logger.info("=" * 80)
     logger.info("Starting Abduction Demo")
     logger.info("=" * 80)
@@ -626,12 +916,12 @@ def main(args=None):
         raise
 
     # Handle custom image path or load from dataset
-    if args.image_path is not None:
+    if runtime_config.image_path is not None:
         # Use custom image path
-        logger.info(f"Using custom image path: {args.image_path}")
-        if not args.image_path.exists():
-            logger.error(f"Custom image file not found: {args.image_path}")
-            raise FileNotFoundError(f"Image file not found: {args.image_path}")
+        logger.info(f"Using custom image path: {runtime_config.image_path}")
+        if not runtime_config.image_path.exists():
+            logger.error(f"Custom image file not found: {runtime_config.image_path}")
+            raise FileNotFoundError(f"Image file not found: {runtime_config.image_path}")
 
         # Create a simple object to hold image info (without labels)
         class CustomImage:
@@ -639,7 +929,7 @@ def main(args=None):
                 self.image_path = image_path
                 self.cl = "unknown"  # No label available for custom images
 
-        labeled_image = CustomImage(args.image_path)
+        labeled_image = CustomImage(runtime_config.image_path)
         logger.info(f"Processing custom image: {labeled_image.image_path.name}")
     else:
         # Load data from predefined dataset
@@ -648,25 +938,26 @@ def main(args=None):
         logger.info(f"Loaded {len(labeled_images)} images")
 
         # Select image to process
-        if args.image_index >= len(labeled_images):
-            logger.error(f"IMAGE_INDEX {args.image_index} out of range (0-{len(labeled_images) - 1})")
+        if runtime_config.image_index >= len(labeled_images):
+            logger.error(f"IMAGE_INDEX {runtime_config.image_index} out of range (0-{len(labeled_images) - 1})")
             raise ValueError(f"IMAGE_INDEX must be in range 0-{len(labeled_images) - 1}")
 
-        labeled_image = labeled_images[args.image_index]
+        labeled_image = labeled_images[runtime_config.image_index]
         logger.info(
-            f"Processing image {args.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
+            f"Processing image {runtime_config.image_index}: {labeled_image.image_path.name} (actual label: {labeled_image.cl})"
         )
 
     # CNN + XAI Preprocessing Stage (conditionally enabled; skipped in testing mode unless --force-preprocessing is used)
     preprocessing_result = None
     pipeline_image_path = labeled_image.image_path  # Default to original image
     cnn_classification = None  # Persist CNN classification for final reporting
+    temp_files: list[Path] = []  # Track temp files for cleanup
 
     run_preprocessing = (
         CNN_PREPROCESSING_AVAILABLE
         and config.ENABLE_CNN_PREPROCESSING
-        and (args.mode != "testing" or args.force_preprocessing)
-        and not args.disable_cnn
+        and (runtime_config.mode != "testing" or runtime_config.force_preprocessing)
+        and not runtime_config.disable_cnn
     )
 
     if run_preprocessing:
@@ -677,9 +968,9 @@ def main(args=None):
         try:
             # Initialize preprocessing pipeline with command-line options (use config.RESULTS_DIR for consistency)
             preprocessing_pipeline = PreprocessingPipeline(
-                enable_cnn=not args.disable_cnn,
-                enable_xai=not args.disable_xai,
-                enable_enhancement=not args.disable_enhancement,
+                enable_cnn=not runtime_config.disable_cnn,
+                enable_xai=not runtime_config.disable_xai,
+                enable_enhancement=not runtime_config.disable_enhancement,
             )
 
             # Process the image
@@ -687,29 +978,35 @@ def main(args=None):
                 labeled_image.image_path, save_prefix=labeled_image.image_path.stem
             )
 
-            # Display preprocessing results
-            if preprocessing_result["classification"]:
+            # Display preprocessing results (with null-safe access)
+            if preprocessing_result and preprocessing_result.get("classification"):
                 cls_result = preprocessing_result["classification"]
                 cnn_classification = cls_result  # persist for final printing
-                logger.info(
-                    f"CNN Classification: {cls_result['predicted_class']} (confidence: {cls_result['confidence']:.3f})"
-                )
-                logger.info(f"Probabilities: {cls_result['probabilities']}")
+                predicted_class = cls_result.get("predicted_class", "unknown")
+                confidence = cls_result.get("confidence", 0.0)
+                probabilities = cls_result.get("probabilities", {})
+                logger.info(f"CNN Classification: {predicted_class} (confidence: {confidence:.3f})")
+                logger.info(f"Probabilities: {probabilities}")
 
-            if preprocessing_result["explanations"]:
+            if preprocessing_result and preprocessing_result.get("explanations"):
                 methods = list(preprocessing_result["explanations"].keys())
                 logger.info(f"XAI explanations generated: {methods}")
 
-            if preprocessing_result["enhanced_images"]:
+            if preprocessing_result and preprocessing_result.get("enhanced_images"):
                 styles = list(preprocessing_result["enhanced_images"].keys())
                 logger.info(f"Image enhancements generated: {styles}")
 
-            # Use enhanced image for pipeline if configured
-            if config.USE_ENHANCED_IMAGE_IN_PIPELINE and preprocessing_result.get("pipeline_image"):
+            # Use enhanced image for pipeline if configured (with explicit null checks)
+            if (
+                config.USE_ENHANCED_IMAGE_IN_PIPELINE
+                and preprocessing_result is not None
+                and preprocessing_result.get("pipeline_image") is not None
+            ):
                 enhanced_image = preprocessing_result["pipeline_image"]
                 temp_path = build_enhanced_temp_path(labeled_image.image_path.stem)
                 enhanced_image.save(temp_path)
                 pipeline_image_path = temp_path
+                temp_files.append(temp_path)  # Track for cleanup
                 logger.info(f"Using enhanced image for pipeline: {temp_path}")
 
         except Exception as e:
@@ -722,137 +1019,72 @@ def main(args=None):
             "Use --force-preprocessing to run it in testing mode."
         )
 
-    if args.mode == "testing":
-        logger.info("Running in TESTING mode (using cached results)")
-        try:
-            reasoning_description = config.CACHED_REASONING_FILE.read_text()
-            problog_program = config.CACHED_CODING_FILE.read_text()
-            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
-            grounding_res = json.loads(config.CACHED_GROUNDING_FILE.read_text())
+    try:
+        # Mode-specific execution using extracted handlers
+        if runtime_config.mode == "testing":
+            try:
+                _, problog_program, _, grounding_res = run_testing_mode()
+            except FileNotFoundError as e:
+                logger.error(f"Cached file not found: {e}")
+                logger.error("Please run with --mode=full first to generate cached results, or check your file paths")
+                raise
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse cached JSON file: {e}")
+                raise
+            except ValidationError as e:
+                logger.error(f"Cached data validation failed: {e}")
+                raise
 
-            # Validate loaded data
-            validate_problog_program(problog_program)
-            validate_feature_list(feature_list)
-            validate_grounding_results(grounding_res)
-            grounding_res = sanitize_grounding_results(grounding_res)
+        elif runtime_config.mode == "partial":
+            try:
+                _, problog_program, _, grounding_res = run_partial_mode(
+                    pipeline_image_path=pipeline_image_path,
+                    highlighted_only=runtime_config.highlighted_only,
+                    preprocessing_result=preprocessing_result,
+                    cnn_classification=cnn_classification,
+                )
+            except FileNotFoundError as e:
+                logger.error(f"Cached file not found: {e}")
+                logger.error("Please run with --mode=full first to generate reasoning, coding, and feature results")
+                raise
+            except (RuntimeError, ValidationError) as e:
+                logger.error(f"Pipeline failed: {e}")
+                raise
 
-            # Transform underscores to spaces in feature names
-            feature_list = [feature.replace("_", " ") for feature in feature_list]
+        else:  # runtime_config.mode == "full"
+            try:
+                _, problog_program, _, grounding_res = run_full_mode(
+                    pipeline_image_path=pipeline_image_path,
+                    highlighted_only=runtime_config.highlighted_only,
+                    preprocessing_result=preprocessing_result,
+                    cnn_classification=cnn_classification,
+                )
+            except NotImplementedError as e:
+                logger.error(str(e))
+                logger.error("Cannot continue without implementing the Gemini API")
+                raise
+            except (RuntimeError, ValidationError) as e:
+                logger.error(f"Pipeline failed: {e}")
+                raise
 
-            logger.debug("Loaded and validated all cached results")
-        except FileNotFoundError as e:
-            logger.error(f"Cached file not found: {e}")
-            logger.error("Please run with --mode=full first to generate cached results, or check your file paths")
-            raise
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse cached JSON file: {e}")
-            raise
-        except ValidationError as e:
-            logger.error(f"Cached data validation failed: {e}")
-            raise
-    elif args.mode == "partial":
-        logger.info("Running in PARTIAL mode (starting after coding step)")
-        try:
-            # Ensure output directory exists
-            config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        # Execute final inference
+        p_cat, p_dog = execute_logic_program(problog_program, grounding_res)
 
-            # Load cached reasoning, coding, and features
-            reasoning_description = config.CACHED_REASONING_FILE.read_text()
-            problog_program = config.CACHED_CODING_FILE.read_text()
-            feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
+        # Display results using extracted function
+        display_classification_results(
+            image_name=labeled_image.image_path.name,
+            actual_label=labeled_image.cl,
+            p_cat=p_cat,
+            p_dog=p_dog,
+            preprocessing_result=preprocessing_result,
+            cnn_classification=cnn_classification,
+        )
 
-            # Validate loaded cached data
-            validate_problog_program(problog_program)
-            validate_feature_list(feature_list)
+        return p_cat, p_dog
 
-            # Transform underscores to spaces in feature names
-            feature_list = [feature.replace("_", " ") for feature in feature_list]
-
-            logger.debug("Loaded and validated cached reasoning, coding, and features")
-
-            # Run grounding on the image (original or enhanced)
-            grounding_res = grounding(
-                feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=args.highlighted_only
-            )
-
-            # Display fancy grounding results
-            display_grounding_results(grounding_res)
-            log_cnn_xai_context(preprocessing_result, cnn_classification, "partial grounding")
-
-            config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
-            logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
-
-        except FileNotFoundError as e:
-            logger.error(f"Cached file not found: {e}")
-            logger.error("Please run with --mode=full first to generate reasoning, coding, and feature results")
-            raise
-        except (RuntimeError, ValidationError) as e:
-            logger.error(f"Pipeline failed: {e}")
-            raise
-    else:  # args.mode == "full"
-        logger.info("Running in FULL PIPELINE mode (live LLM inference)")
-
-        try:
-            # Ensure output directory exists
-            config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-            reasoning_description = reasoning()
-            config.CACHED_REASONING_FILE.write_text(reasoning_description)
-            logger.debug(f"Saved reasoning to {config.CACHED_REASONING_FILE}")
-
-            # ONLY FOR DEMONSTRATION PURPOSES
-            problog_program = coding(reasoning_description)
-            config.CACHED_CODING_FILE.write_text(problog_program)
-            logger.debug(f"Saved ProbLog program to {config.CACHED_CODING_FILE}")
-
-            feature_list = extract_feature_list(problog_program=problog_program)
-            config.CACHED_FEATURES_FILE.write_text("\n".join(feature_list))
-            logger.debug(f"Saved feature list to {config.CACHED_FEATURES_FILE}")
-
-            grounding_res = grounding(
-                feature_list=feature_list, image_path=pipeline_image_path, highlighted_only=args.highlighted_only
-            )
-
-            # Display fancy grounding results
-            display_grounding_results(grounding_res)
-            log_cnn_xai_context(preprocessing_result, cnn_classification, "full grounding")
-
-            config.CACHED_GROUNDING_FILE.write_text(json.dumps(grounding_res, indent=2))
-            logger.debug(f"Saved grounding results to {config.CACHED_GROUNDING_FILE}")
-
-        except NotImplementedError as e:
-            logger.error(str(e))
-            logger.error("Cannot continue without implementing the Gemini API")
-            raise
-        except (RuntimeError, ValidationError) as e:
-            logger.error(f"Pipeline failed: {e}")
-            raise
-
-    # Execute final inference
-    p_cat, p_dog = execute_logic_program(problog_program, grounding_res)
-
-    # Display results
-    logger.info("=" * 80)
-    logger.info("CLASSIFICATION RESULTS")
-    logger.info("=" * 80)
-    logger.info(f"Image: {labeled_image.image_path.name}")
-    logger.info(f"Actual Label: {labeled_image.cl}")
-    logger.info(f"Cat Probability: {p_cat:.4f}")
-    logger.info(f"Dog Probability: {p_dog:.4f}")
-    predicted = "cat" if p_cat > p_dog else "dog"
-    logger.info(f"Predicted (ProbLog Inference): {predicted}")
-    if labeled_image.cl != "unknown":
-        logger.info(f"Correct: {'✓' if predicted == labeled_image.cl else '✗'}")
-    # Comparative summary with CNN baseline (if available)
-    log_cnn_xai_context(preprocessing_result, cnn_classification, "final")
-    if cnn_classification:
-        agreement = predicted == cnn_classification["predicted_class"]
-        logger.info(f"Model Agreement: {'✓ AGREEMENT' if agreement else '✗ DISAGREEMENT'}")
-    logger.info("=" * 80)
-    logger.info("Abduction Demo Complete")
-    logger.info("=" * 80)
-
-    return p_cat, p_dog
+    finally:
+        # Clean up temporary files
+        cleanup_temp_files(temp_files)
 
 
 def parse_args():
@@ -967,37 +1199,33 @@ if __name__ == "__main__":
     # Parse command-line arguments
     args = parse_args()
 
-    # Update config based on arguments
-    if args.mode == "testing":
-        config.TESTING = 1
-    else:
-        config.TESTING = 0
-
-    config.IMAGE_INDEX = args.image_index
-    config.RESULTS_DIR = args.output_dir
-    config.LOG_LEVEL = args.log_level
-    config.LLM_BASE_URL = args.llm_base_url
-
-    # Update CNN + XAI configuration based on arguments
-    if args.disable_cnn:
-        config.ENABLE_CNN_PREPROCESSING = 0
-    if args.use_original_image:
-        config.USE_ENHANCED_IMAGE_IN_PIPELINE = 0
-
-    # Update logging level
-    logging.getLogger().setLevel(getattr(logging, config.LOG_LEVEL))
-
-    if args.force_preprocessing and args.mode == "testing":
-        logger.info("Force preprocessing enabled in testing mode.")
-
-    # Show config if requested
+    # Show config if requested (before creating RuntimeConfig)
     if args.show_config:
         config.print_config()
         exit(0)
 
+    # Create RuntimeConfig from args (no config mutation needed)
+    runtime_config = create_runtime_config(args)
+
+    # Update logging level based on runtime config
+    logging.getLogger().setLevel(getattr(logging, runtime_config.log_level))
+
+    # Update essential config paths that affect caching (minimal mutation)
+    # Note: These are necessary for cached file paths to work correctly
+    config.RESULTS_DIR = runtime_config.output_dir
+
+    # Update CNN settings for the preprocessing pipeline
+    if runtime_config.disable_cnn:
+        config.ENABLE_CNN_PREPROCESSING = 0
+    if runtime_config.use_original_image:
+        config.USE_ENHANCED_IMAGE_IN_PIPELINE = 0
+
+    if runtime_config.force_preprocessing and runtime_config.mode == "testing":
+        logger.info("Force preprocessing enabled in testing mode.")
+
     # Run main pipeline
     try:
-        main(args)
+        main(runtime_config)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         exit(1)

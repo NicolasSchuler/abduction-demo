@@ -111,8 +111,10 @@ class EfficientNetCatDogClassifier:
             model.classifier[-1] = nn.Linear(in_features, 2)
             self.aggregated_from_imagenet = False
             try:
-                checkpoint = torch.load(self.model_path, map_location="cpu")
-                state_dict = checkpoint.get("model_state_dict", checkpoint)
+                # SECURITY: Use weights_only=True to prevent arbitrary code execution
+                # from malicious checkpoint files
+                checkpoint = torch.load(self.model_path, map_location="cpu", weights_only=True)
+                state_dict = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
                 missing, unexpected = model.load_state_dict(state_dict, strict=False)
                 if missing:
                     logger.debug("Missing keys during load: %s", missing)
@@ -195,7 +197,13 @@ class EfficientNetCatDogClassifier:
 
     def _ensure_pil(self, image: Union[Image.Image, str, Path]) -> Image.Image:
         if isinstance(image, (str, Path)):
-            return Image.open(image).convert("RGB")
+            image_path = Path(image)
+            if not image_path.exists():
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+            try:
+                return Image.open(image_path).convert("RGB")
+            except Exception as e:
+                raise ValueError(f"Failed to open image {image_path}: {e}") from e
         if isinstance(image, Image.Image):
             return image
         raise TypeError(f"Unsupported image type: {type(image)}")
@@ -257,7 +265,8 @@ class EfficientNetCatDogClassifier:
     ) -> List[Dict[str, Union[str, float, Dict[str, float]]]]:
         if not images:
             return []
-        batch_size = batch_size or config.CNN_BATCH_SIZE
+        # Use provided batch_size, or config value, or default fallback of 1
+        batch_size = batch_size or getattr(config, "CNN_BATCH_SIZE", 1) or 1
         results: List[Dict[str, Union[str, float, Dict[str, float]]]] = []
 
         for start in range(0, len(images), batch_size):

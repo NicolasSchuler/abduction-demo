@@ -101,7 +101,10 @@ class PreprocessingPipeline:
             try:
                 # Initialize CNN classifier
                 device = None if config.CNN_DEVICE == "auto" else config.CNN_DEVICE
-                model_path = config.CNN_MODEL_PATH if config.CNN_MODEL_PATH.strip() else None
+                # Safe handling of model path - check type before calling .strip()
+                model_path = None
+                if isinstance(config.CNN_MODEL_PATH, str) and config.CNN_MODEL_PATH.strip():
+                    model_path = config.CNN_MODEL_PATH
 
                 self.cnn_classifier = EfficientNetCatDogClassifier(model_path=model_path, device=device)
 
@@ -357,12 +360,14 @@ class PreprocessingPipeline:
                     metadata["enhancement_summary"]["pipeline_image_style"] = style_name
                     break
 
-        # Save metadata
+        # Save metadata with error handling
         metadata_path = config.CNN_METADATA_OUTPUT_DIR / f"{image_name}_metadata.json"
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        logger.debug(f"Metadata saved to {metadata_path}")
+        try:
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            logger.debug(f"Metadata saved to {metadata_path}")
+        except (IOError, OSError) as e:
+            logger.error(f"Failed to save metadata to {metadata_path}: {e}")
 
     def process_batch(
         self, images: List[Union[Image.Image, str, Path]], save_prefixes: Optional[List[str]] = None

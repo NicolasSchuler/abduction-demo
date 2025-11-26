@@ -6,11 +6,23 @@ and pipeline outputs.
 """
 
 import logging
+import re
 from typing import Any
 
 from src import config
 
 logger = logging.getLogger(__name__)
+
+# Threshold for logging probability clamping (values changed by more than this will be logged)
+CLAMP_LOG_THRESHOLD = 0.001
+
+# Regex patterns for ProbLog predicate detection (more robust than substring matching)
+PROBLOG_PREDICATE_PATTERNS = {
+    "is_cat": re.compile(r'\bis_cat\s*[(:.]'),
+    "is_dog": re.compile(r'\bis_dog\s*[(:.]'),
+    "prob_cat": re.compile(r'\bprob_cat\s*[(:.]'),
+    "prob_dog": re.compile(r'\bprob_dog\s*[(:.]'),
+}
 
 
 class ValidationError(Exception):
@@ -40,7 +52,7 @@ def validate_probability(value: float, name: str = "probability") -> None:
         )
 
 
-def validate_grounding_results(grounding: dict[str, float]) -> None:
+def validate_grounding_results(grounding: dict[str, float], *, strict: bool = False) -> None:
     """
     Validate grounding results from vision model.
 
@@ -51,9 +63,12 @@ def validate_grounding_results(grounding: dict[str, float]) -> None:
 
     Args:
         grounding: Dictionary mapping feature names to probabilities
+        strict: If True, raise on invalid probabilities; if False (default), log warnings only.
+                Use strict=True when you want to ensure all values are valid before proceeding.
+                Use strict=False when you plan to sanitize values with sanitize_grounding_results().
 
     Raises:
-        ValidationError: If validation fails
+        ValidationError: If validation fails (always for structural issues, conditionally for value issues)
         TypeError: If types are incorrect
     """
     if not isinstance(grounding, dict):
@@ -69,9 +84,10 @@ def validate_grounding_results(grounding: dict[str, float]) -> None:
         try:
             validate_probability(probability, f"Probability for feature '{feature_name}'")
         except (ValidationError, TypeError) as e:
+            if strict:
+                raise  # Re-raise in strict mode
             logger.warning(f"Invalid probability for feature '{feature_name}': {e}")
-            # Log but don't fail - we can clamp the value
-            logger.warning(f"Clamping probability to valid range")
+            logger.warning("Value will be clamped when sanitize_grounding_results() is called")
 
     logger.info(f"Validated {len(grounding)} grounding results")
 
@@ -124,6 +140,9 @@ def validate_problog_program(program: str) -> None:
     - Contains required sections (markers)
     - Contains query predicates
 
+    Uses regex patterns for more robust predicate detection, avoiding false positives
+    from comments or string literals.
+
     Args:
         program: ProbLog program as string
 
@@ -136,12 +155,24 @@ def validate_problog_program(program: str) -> None:
     if not program.strip():
         raise ValidationError("ProbLog program cannot be empty")
 
-    # Check for essential components
-    if "is_cat" not in program or "is_dog" not in program:
+    # Check for essential components using regex patterns for robustness
+    # This avoids false positives from comments or unrelated strings
+    if not PROBLOG_PREDICATE_PATTERNS["is_cat"].search(program) or \
+       not PROBLOG_PREDICATE_PATTERNS["is_dog"].search(program):
         logger.warning("ProbLog program may be malformed: missing 'is_cat' or 'is_dog' predicates")
 
-    if "prob_cat" not in program or "prob_dog" not in program:
+    if not PROBLOG_PREDICATE_PATTERNS["prob_cat"].search(program) or \
+       not PROBLOG_PREDICATE_PATTERNS["prob_dog"].search(program):
         logger.warning("ProbLog program may be malformed: missing 'prob_cat' or 'prob_dog' facts")
+
+    # Validate syntax by attempting to parse with ProbLog
+    try:
+        from problog.program import PrologString
+        PrologString(program)
+    except ImportError:
+        logger.warning("ProbLog library not available for syntax validation")
+    except Exception as e:
+        raise ValidationError(f"Invalid ProbLog syntax: {e}")
 
     logger.info(f"Validated ProbLog program ({len(program)} characters)")
 
@@ -175,10 +206,19 @@ def sanitize_grounding_results(grounding: dict[str, Any]) -> dict[str, float]:
     Returns:
         Sanitized grounding results with clamped probabilities
 
+    Note:
+        Invalid values (non-numeric types) default to 0.5, representing maximum uncertainty
+        in a binary classification context. Use validate_grounding_results(strict=True) first
+        if you need to detect and handle invalid values differently.
+
     Example:
         >>> sanitize_grounding_results({'feature_a': 1.2, 'feature_b': -0.1})
         {'feature_a': 0.9999, 'feature_b': 0.0001}
     """
+    # Default probability for invalid values: 0.5 represents maximum uncertainty
+    # (equally likely to be present or absent) in binary classification
+    DEFAULT_UNCERTAIN_PROBABILITY = 0.5
+
     sanitized = {}
 
     for feature_name, value in grounding.items():
@@ -186,13 +226,16 @@ def sanitize_grounding_results(grounding: dict[str, Any]) -> dict[str, float]:
             prob = float(value)
             clamped = clamp_probability(prob)
 
-            if abs(prob - clamped) > 0.001:
+            if abs(prob - clamped) > CLAMP_LOG_THRESHOLD:
                 logger.debug(f"Clamped probability for '{feature_name}': {prob:.4f} -> {clamped:.4f}")
 
             sanitized[feature_name] = clamped
 
         except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid probability value for '{feature_name}': {value} ({e}). Using 0.5 as default.")
-            sanitized[feature_name] = 0.5
+            logger.warning(
+                f"Invalid probability value for '{feature_name}': {value} ({e}). "
+                f"Using {DEFAULT_UNCERTAIN_PROBABILITY} (maximum uncertainty)."
+            )
+            sanitized[feature_name] = DEFAULT_UNCERTAIN_PROBABILITY
 
     return sanitized

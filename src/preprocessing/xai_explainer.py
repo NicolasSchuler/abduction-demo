@@ -128,9 +128,18 @@ class XAIExplainer:
                 logger.warning("Grad-CAM requested but pytorch-grad-cam not fully installed. Skipping.")
             else:
                 try:
-                    # Environment-driven configuration
-                    cam_method = os.getenv("XAI_GRADCAM_METHOD", "gradcam").lower()  # gradcam | gradcam++ | scorecam
-                    layer_index = int(os.getenv("XAI_GRADCAM_LAYER_INDEX", "-1"))  # e.g. -3 for earlier block
+                    # Environment-driven configuration with validation
+                    cam_method = os.getenv("XAI_GRADCAM_METHOD", "gradcam").lower()
+                    valid_cam_methods = ["gradcam", "gradcam++", "scorecam"]
+                    if cam_method not in valid_cam_methods:
+                        logger.warning(f"Invalid XAI_GRADCAM_METHOD '{cam_method}', using 'gradcam'")
+                        cam_method = "gradcam"
+
+                    try:
+                        layer_index = int(os.getenv("XAI_GRADCAM_LAYER_INDEX", "-1"))
+                    except ValueError:
+                        logger.warning("Invalid XAI_GRADCAM_LAYER_INDEX, using -1")
+                        layer_index = -1
                     fusion_spec = os.getenv("XAI_GRADCAM_FUSION", "")  # e.g. "-3,-2,-1"
 
                     # Resolve candidate feature blocks
@@ -247,8 +256,10 @@ class XAIExplainer:
             if shap is None:
                 logger.warning("SHAP requested but shap not installed. Skipping.")
             else:
-                if os.getenv("XAI_ENABLE_SHAP", "1") == "0":
-                    logger.info("SHAP disabled via XAI_ENABLE_SHAP=0")
+                # More robust env var checking for disable flag
+                shap_disabled = os.getenv("XAI_ENABLE_SHAP", "1").lower() in ["0", "false", "no"]
+                if shap_disabled:
+                    logger.info("SHAP disabled via XAI_ENABLE_SHAP")
                     # Do not register SHAP explainer key to skip generation entirely
                 else:
                     # Defer actual explainer creation until first use
@@ -533,8 +544,17 @@ class XAIExplainer:
         }
 
     def _occlusion_explanation(self, input_tensor: torch.Tensor, target_idx: int) -> Dict[str, Any]:
-        patch = int(os.getenv("OCCLUSION_PATCH", "32"))
-        stride = int(os.getenv("OCCLUSION_STRIDE", "16"))
+        # Safe env var parsing with fallback defaults
+        try:
+            patch = int(os.getenv("OCCLUSION_PATCH", "32"))
+        except ValueError:
+            logger.warning("Invalid OCCLUSION_PATCH, using default 32")
+            patch = 32
+        try:
+            stride = int(os.getenv("OCCLUSION_STRIDE", "16"))
+        except ValueError:
+            logger.warning("Invalid OCCLUSION_STRIDE, using default 16")
+            stride = 16
         baseline_mode = os.getenv("OCCLUSION_BASELINE", "blur")
         x = input_tensor.clone()
         if baseline_mode == "zero":
@@ -632,10 +652,16 @@ class XAIExplainer:
             attr_key = "attributions" if "attributions" in explanation else "importance_map"
             attr_map = explanation[attr_key]
 
-            # Convert to colormap visualization
+            # Convert to colormap visualization with configurable colormap
             import matplotlib.cm as cm
 
-            heatmap = cm.hot(attr_map)[:, :, :3]  # Take RGB channels
+            colormap_name = os.getenv("XAI_ATTRIBUTION_COLORMAP", "hot")
+            try:
+                cmap = getattr(cm, colormap_name)
+            except AttributeError:
+                logger.warning(f"Invalid colormap '{colormap_name}', using 'hot'")
+                cmap = cm.hot
+            heatmap = cmap(attr_map)[:, :, :3]  # Take RGB channels
             heatmap = (heatmap * 255).astype(np.uint8)
 
             heatmap_path = method_dir / f"{image_name}_{method_name}_heatmap.png"
@@ -705,9 +731,10 @@ class XAIExplainer:
                 # Extract key metrics for comparison
                 method_data = {"method": method_explanation["method"], "description": method_explanation["description"]}
 
+                # Use separate keys for attribution and CAM statistics to avoid overwriting
                 if "attributions" in method_explanation:
                     attr_map = method_explanation["attributions"]
-                    method_data["statistics"] = {
+                    method_data["attribution_statistics"] = {
                         "mean_importance": float(np.mean(attr_map)),
                         "max_importance": float(np.max(attr_map)),
                         "std_importance": float(np.std(attr_map)),
@@ -716,7 +743,7 @@ class XAIExplainer:
 
                 if "grayscale_cam" in method_explanation:
                     cam_map = method_explanation["grayscale_cam"]
-                    method_data["statistics"] = {
+                    method_data["cam_statistics"] = {
                         "mean_activation": float(np.mean(cam_map)),
                         "max_activation": float(np.max(cam_map)),
                         "std_activation": float(np.std(cam_map)),

@@ -104,10 +104,12 @@ class ImageEnhancer:
         """
         if enhancement_styles is None:
             enhancement_styles = self.enhancement_styles
-        # Graceful fallback: if OpenCV is not available, skip enhancement
+        # Fail explicitly if OpenCV is not available rather than silently returning empty
         if cv2 is None:
-            logger.warning("OpenCV not available; skipping image enhancement.")
-            return {}
+            raise ImportError(
+                "OpenCV (cv2) is required for image enhancement but not installed. "
+                "Install it with: pip install opencv-python"
+            )
 
         # Convert PIL Image to numpy array if needed
         if isinstance(original_image, Image.Image):
@@ -116,21 +118,18 @@ class ImageEnhancer:
             original_array = original_image
 
         # Ensure BGR format for OpenCV functions
+        # Both PIL and numpy arrays are expected to be RGB, convert to BGR for OpenCV
         if len(original_array.shape) == 3 and original_array.shape[2] == 3:
-            # Assume RGB if PIL, convert to BGR for OpenCV
-            if isinstance(original_image, Image.Image):
-                original_bgr = cv2.cvtColor(original_array, cv2.COLOR_RGB2BGR)
-            else:
-                # Assume already RGB, convert to BGR
-                original_bgr = cv2.cvtColor(original_array, cv2.COLOR_RGB2BGR)
+            original_bgr = cv2.cvtColor(original_array, cv2.COLOR_RGB2BGR)
         else:
+            # Grayscale or unexpected format - use as-is
             original_bgr = original_array
 
         enhanced_images = {}
         image_name = save_prefix or "enhanced"
 
-        # Create masks from explanations
-        masks = self._create_masks_from_explanations(explanations)
+        # Create masks from explanations, passing image dimensions for fallback
+        masks = self._create_masks_from_explanations(explanations, original_bgr.shape[:2])
 
         # Apply different enhancement styles
         for style in enhancement_styles:
@@ -154,7 +153,9 @@ class ImageEnhancer:
 
         return enhanced_images
 
-    def _create_masks_from_explanations(self, explanations: Dict[str, Any]) -> Dict[str, np.ndarray]:
+    def _create_masks_from_explanations(
+        self, explanations: Dict[str, Any], image_shape: Optional[Tuple[int, int]] = None
+    ) -> Dict[str, np.ndarray]:
         """Create refined foreground masks from XAI explanations with:
         - Configurable thresholds (config.XAI_CAM_THRESHOLD, config.XAI_ATTRIBUTION_THRESHOLD)
         - Morphological cleanup (opening + dilation)
@@ -246,13 +247,18 @@ class ImageEnhancer:
 
         # Fallback default mask if still empty
         if not masks:
-            h, w = 224, 224
+            # Use provided image dimensions, fallback to CNN input size if not provided
+            if image_shape is not None:
+                h, w = image_shape
+            else:
+                h, w = config.CNN_INPUT_SIZE if hasattr(config, 'CNN_INPUT_SIZE') else (224, 224)
             default_mask = np.zeros((h, w), dtype=np.uint8)
             cy, cx = h // 2, w // 2
             radius = min(h, w) // 4
             y, x = np.ogrid[:h, :w]
-            if ((x - cx) ** 2 + (y - cy) ** 2 <= radius**2).any():
-                default_mask[((x - cx) ** 2 + (y - cy) ** 2 <= radius**2)] = 255
+            # Create circular mask centered on image
+            circle_mask = ((x - cx) ** 2 + (y - cy) ** 2 <= radius**2)
+            default_mask[circle_mask] = 255
             masks["default"] = default_mask
             logger.warning("No valid XAI masks produced; using default center mask.")
 

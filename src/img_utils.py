@@ -1,10 +1,19 @@
+import logging
 from pathlib import Path
+from typing import Dict, Tuple, Union
 
 import cv2
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
-def apply_color_overlay(image, mask, color=(0, 0, 255), alpha=0.5):
+
+def apply_color_overlay(
+    image: np.ndarray,
+    mask: np.ndarray,
+    color: Tuple[int, int, int] = (0, 0, 255),
+    alpha: float = 0.5
+) -> np.ndarray:
     """
     Applies a semi-transparent colored overlay to the masked region of an image.
 
@@ -22,8 +31,9 @@ def apply_color_overlay(image, mask, color=(0, 0, 255), alpha=0.5):
         cv2.imwrite("image.jpg", overlay_result)
     """
     # Create a colored layer
+    # Use mask > 0 for robustness (works with both 0-255 and 0-1 masks)
     overlay = np.zeros_like(image)
-    overlay[mask == 255] = color
+    overlay[mask > 0] = color
 
     # Blend the overlay with the original image
     # result = original_image * (1 - alpha) + overlay * alpha
@@ -32,7 +42,7 @@ def apply_color_overlay(image, mask, color=(0, 0, 255), alpha=0.5):
     return highlighted_image
 
 
-def desaturate_background(image, mask):
+def desaturate_background(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
     Keeps the masked area in color and turns the background to grayscale.
 
@@ -64,7 +74,11 @@ def desaturate_background(image, mask):
     return highlighted_image
 
 
-def blur_background(image, mask, blur_intensity=(35, 35)):
+def blur_background(
+    image: np.ndarray,
+    mask: np.ndarray,
+    blur_intensity: Tuple[int, int] = (35, 35)
+) -> np.ndarray:
     """
     Blurs the background, keeping the masked area in focus.
 
@@ -96,7 +110,12 @@ def blur_background(image, mask, blur_intensity=(35, 35)):
     return highlighted_image
 
 
-def apply_gradient_heatmap_overlay(image, mask, colormap=cv2.COLORMAP_JET, alpha=0.6):
+def apply_gradient_heatmap_overlay(
+    image: np.ndarray,
+    mask: np.ndarray,
+    colormap: int = cv2.COLORMAP_JET,
+    alpha: float = 0.6
+) -> np.ndarray:
     """
     Applies a semi-transparent gradient heatmap overlay to the masked region.
 
@@ -113,15 +132,23 @@ def apply_gradient_heatmap_overlay(image, mask, colormap=cv2.COLORMAP_JET, alpha
         gradient_heatmap_result = apply_gradient_heatmap_overlay(image, mask, colormap=cv2.COLORMAP_JET, alpha=0.6)
         cv2.imwrite("image.jpg", gradient_heatmap_result)
     """
+    # Handle empty or flat masks to avoid NaN in normalization
+    if mask is None or mask.sum() == 0:
+        logger.warning("Empty mask provided to apply_gradient_heatmap_overlay, returning original image")
+        return image.copy()
+
     # 1. Create a distance transform from the mask.
     # This creates a float32 image where each pixel's value is its distance
     # to the nearest zero-pixel (the edge of the mask).
     dist_transform = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
 
     # 2. Normalize the distance transform to the 0-255 range.
-    # This is necessary so we can apply a colormap.
-    normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
-    gradient_mask = normalized_dist.astype(np.uint8)
+    # Handle flat masks where max == min to avoid NaN
+    if dist_transform.max() == dist_transform.min():
+        gradient_mask = np.zeros_like(dist_transform, dtype=np.uint8)
+    else:
+        normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
+        gradient_mask = normalized_dist.astype(np.uint8)
 
     # 3. Apply the colormap to the gradient mask.
     heatmap_color = cv2.applyColorMap(gradient_mask, colormap)
@@ -135,7 +162,13 @@ def apply_gradient_heatmap_overlay(image, mask, colormap=cv2.COLORMAP_JET, alpha
     return highlighted_image
 
 
-def apply_spotlight_heatmap(image, mask, colormap=cv2.COLORMAP_JET, alpha=0.6, darkness_factor=0.3):
+def apply_spotlight_heatmap(
+    image: np.ndarray,
+    mask: np.ndarray,
+    colormap: int = cv2.COLORMAP_JET,
+    alpha: float = 0.6,
+    darkness_factor: float = 0.3
+) -> np.ndarray:
     """
     Applies a gradient heatmap overlay and darkens the background.
 
@@ -175,7 +208,13 @@ def apply_spotlight_heatmap(image, mask, colormap=cv2.COLORMAP_JET, alpha=0.6, d
     return final_image
 
 
-def apply_composite_overlay(image, mask, colormap=cv2.COLORMAP_JET, foreground_alpha=0.6, background_alpha=0.5):
+def apply_composite_overlay(
+    image: np.ndarray,
+    mask: np.ndarray,
+    colormap: int = cv2.COLORMAP_JET,
+    foreground_alpha: float = 0.6,
+    background_alpha: float = 0.5
+) -> np.ndarray:
     """
     Creates a composite image with different overlays for foreground and background.
     - Foreground: Original image + gradient heatmap overlay.
@@ -236,7 +275,12 @@ def apply_composite_overlay(image, mask, colormap=cv2.COLORMAP_JET, foreground_a
     return final_image
 
 
-def draw_border(image, mask, color=(0, 255, 0), thickness=3):
+def draw_border(
+    image: np.ndarray,
+    mask: np.ndarray,
+    color: Tuple[int, int, int] = (0, 255, 0),
+    thickness: int = 3
+) -> np.ndarray:
     """
     Draws a border around the masked region on the original image.
 
@@ -333,7 +377,9 @@ def encode_base64_resized(image_path: Path, max_width: int = 800, max_height: in
 
         # Encode as JPEG with specified quality
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-        _, buffer = cv2.imencode(".jpg", image, encode_param)
+        success, buffer = cv2.imencode(".jpg", image, encode_param)
+        if not success:
+            raise ValueError(f"Failed to encode image as JPEG: {image_path}")
 
         # Convert to base64
         image_base64 = base64.b64encode(buffer).decode("utf-8")
@@ -387,14 +433,16 @@ def encode_base64_aggressive_compression(
 
         # Encode as JPEG with aggressive compression
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-        _, buffer = cv2.imencode(".jpg", image, encode_param)
+        success, buffer = cv2.imencode(".jpg", image, encode_param)
+        if not success:
+            raise ValueError(f"Failed to encode image as JPEG: {image_path}")
 
         # Convert to base64
         image_base64 = base64.b64encode(buffer).decode("utf-8")
 
         # Log the size for debugging
         size_kb = len(image_base64) * 3 / 4 / 1024  # Approximate KB size
-        print(f"Compressed image to {new_width}x{new_height}, base64 size: ~{size_kb:.1f}KB")
+        logger.info(f"Compressed image to {new_width}x{new_height}, base64 size: ~{size_kb:.1f}KB")
 
         return image_base64
 
@@ -404,7 +452,7 @@ def encode_base64_aggressive_compression(
         raise ValueError(f"Error processing image: {e}")
 
 
-def get_image_size_estimate(image_path: Path) -> dict:
+def get_image_size_estimate(image_path: Path) -> Dict[str, Union[dict, str]]:
     """
     Get size estimates for different compression levels without actually encoding.
 
@@ -415,6 +463,9 @@ def get_image_size_estimate(image_path: Path) -> dict:
         dict: Size estimates for different compression settings.
     """
     import os
+
+    # Base64 encoding overhead factor: 4/3 (3 bytes become 4 characters)
+    BASE64_OVERHEAD_FACTOR = 4 / 3
 
     try:
         # Get original file size
@@ -432,15 +483,15 @@ def get_image_size_estimate(image_path: Path) -> dict:
             "original": {
                 "dimensions": f"{width}x{height}",
                 "file_size_mb": original_size_mb,
-                "estimated_base64_mb": original_size_mb * 1.33,  # Base64 overhead
+                "estimated_base64_mb": original_size_mb * BASE64_OVERHEAD_FACTOR,
             },
             "standard_compression": {
                 "dimensions": "800x600 (max)",
-                "estimated_base64_kb": 150,  # Rough estimate
+                "estimated_base64_kb": 150,  # Approximate based on typical JPEG compression
             },
             "aggressive_compression": {
                 "dimensions": "400x400 (max)",
-                "estimated_base64_kb": 50,  # Rough estimate
+                "estimated_base64_kb": 50,  # Approximate based on aggressive JPEG compression
             },
         }
 

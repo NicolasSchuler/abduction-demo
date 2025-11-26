@@ -9,6 +9,7 @@ via environment variables.
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Initialize module logger early so later warnings (e.g., missing model file) work reliably
 logger = logging.getLogger(__name__)
@@ -19,22 +20,85 @@ except ImportError:
     cv2 = None
     logger.warning("OpenCV not available, some colormap features will be disabled")
 
+
+# =============================================================================
+# Safe Environment Variable Parsing Helpers
+# =============================================================================
+
+
+def _safe_int(env_var: str, default: int) -> int:
+    """Safely parse an integer environment variable with fallback to default."""
+    value = os.getenv(env_var, str(default))
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f"Invalid integer for {env_var}: '{value}', using default: {default}")
+        return default
+
+
+def _safe_float(env_var: str, default: float) -> float:
+    """Safely parse a float environment variable with fallback to default."""
+    value = os.getenv(env_var, str(default))
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning(f"Invalid float for {env_var}: '{value}', using default: {default}")
+        return default
+
+
+def _safe_list(env_var: str, default: str) -> list:
+    """Safely parse a comma-separated list, stripping whitespace from each item."""
+    value = os.getenv(env_var, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _validate_url(url: str, env_var: str) -> str:
+    """Validate URL format, returning original if valid or warning if malformed."""
+    try:
+        result = urlparse(url)
+        if not all([result.scheme, result.netloc]):
+            logger.warning(f"Malformed URL for {env_var}: '{url}' - missing scheme or host")
+        return url
+    except Exception as e:
+        logger.warning(f"Invalid URL for {env_var}: '{url}' - {e}")
+        return url
+
+
+# =============================================================================
+# Valid Values Constants (used in validation)
+# =============================================================================
+
+VALID_XAI_METHODS = frozenset([
+    "grad_cam", "integrated_grad", "shap", "saliency", "layer_cam", "occlusion"
+])
+
+VALID_ENHANCEMENT_STYLES = frozenset([
+    "heatmap_overlay", "spotlight_heatmap", "composite_overlay",
+    "color_overlay", "blur_background", "desaturate_background"
+])
+
+VALID_CNN_DEVICES = frozenset(["auto", "cuda", "cpu", "mps"])
+
 # =============================================================================
 # Runtime Configuration
 # =============================================================================
 
 # Operation mode: 1 = use cached results, 0 = run full pipeline with LLM inference
-TESTING = int(os.getenv("TESTING", "1"))
+TESTING = _safe_int("TESTING", 1)
+if TESTING not in (0, 1):
+    logger.warning(f"TESTING must be 0 or 1, got {TESTING}. Defaulting to 1.")
+    TESTING = 1
 
 # Image index to process from loaded dataset
-IMAGE_INDEX = int(os.getenv("IMAGE_INDEX", "1"))
+IMAGE_INDEX = _safe_int("IMAGE_INDEX", 1)
 
 # =============================================================================
 # Model Configuration
 # =============================================================================
 
 # Base URL for local LLM server (LM Studio, Ollama, etc.)
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1")
+_llm_url = os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1")
+LLM_BASE_URL = _validate_url(_llm_url, "LLM_BASE_URL")
 
 # API key for LLM server (empty string if not required)
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
@@ -72,12 +136,12 @@ CACHED_GROUNDING_FILE = RESULTS_DIR / "grounding.json"
 # =============================================================================
 
 # Minimum probability value to avoid numerical issues in ProbLog
-EPSILON_PROB = float(os.getenv("EPSILON_PROB", "0.0001"))
+EPSILON_PROB = _safe_float("EPSILON_PROB", 0.0001)
 
 # Image processing parameters for grounding
-IMAGE_MAX_WIDTH = int(os.getenv("IMAGE_MAX_WIDTH", "512"))
-IMAGE_MAX_HEIGHT = int(os.getenv("IMAGE_MAX_HEIGHT", "512"))
-IMAGE_QUALITY = int(os.getenv("IMAGE_QUALITY", "80"))
+IMAGE_MAX_WIDTH = _safe_int("IMAGE_MAX_WIDTH", 512)
+IMAGE_MAX_HEIGHT = _safe_int("IMAGE_MAX_HEIGHT", 512)
+IMAGE_QUALITY = _safe_int("IMAGE_QUALITY", 80)
 
 # =============================================================================
 # Logging Configuration
@@ -122,10 +186,10 @@ CODING_INSTRUCTION = "Write a logical program for the following description:"
 # =============================================================================
 
 # Minimum number of features expected from extraction
-MIN_FEATURES = int(os.getenv("MIN_FEATURES", "1"))
+MIN_FEATURES = _safe_int("MIN_FEATURES", 1)
 
 # Maximum number of features to process
-MAX_FEATURES = int(os.getenv("MAX_FEATURES", "100"))
+MAX_FEATURES = _safe_int("MAX_FEATURES", 100)
 
 # Valid probability range for grounding results
 MIN_PROBABILITY = 0.0
@@ -136,46 +200,51 @@ MAX_PROBABILITY = 1.0
 # =============================================================================
 
 # Enable/disable CNN preprocessing
-ENABLE_CNN_PREPROCESSING = int(os.getenv("ENABLE_CNN_PREPROCESSING", "1"))
+ENABLE_CNN_PREPROCESSING = _safe_int("ENABLE_CNN_PREPROCESSING", 1)
+if ENABLE_CNN_PREPROCESSING not in (0, 1):
+    logger.warning(f"ENABLE_CNN_PREPROCESSING must be 0 or 1, got {ENABLE_CNN_PREPROCESSING}. Defaulting to 1.")
+    ENABLE_CNN_PREPROCESSING = 1
 
 # CNN Model Configuration
 CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "")  # Empty string uses ImageNet weights
 CNN_INPUT_SIZE = (224, 224)
-CNN_BATCH_SIZE = int(os.getenv("CNN_BATCH_SIZE", "1"))
+CNN_BATCH_SIZE = _safe_int("CNN_BATCH_SIZE", 1)
 CNN_DEVICE = os.getenv("CNN_DEVICE", "auto")  # auto, cuda, cpu, mps
+if CNN_DEVICE not in VALID_CNN_DEVICES:
+    logger.warning(f"CNN_DEVICE must be one of {list(VALID_CNN_DEVICES)}, got '{CNN_DEVICE}'. Defaulting to 'auto'.")
+    CNN_DEVICE = "auto"
 
 # CNN confidence thresholds
-CNN_CONFIDENCE_THRESHOLD = float(os.getenv("CNN_CONFIDENCE_THRESHOLD", "0.7"))
-# Removed unused CNN_CAT_PROB_THRESHOLD (previously default 0.5)
+CNN_CONFIDENCE_THRESHOLD = _safe_float("CNN_CONFIDENCE_THRESHOLD", 0.7)
 
-# XAI Methods Configuration
-XAI_METHODS = os.getenv("XAI_METHODS", "grad_cam,integrated_grad,shap").split(",")
-XAI_SAVE_EXPLANATIONS = int(os.getenv("XAI_SAVE_EXPLANATIONS", "1"))
+# XAI Methods Configuration (with whitespace stripping)
+XAI_METHODS = _safe_list("XAI_METHODS", "grad_cam,integrated_grad,shap")
+XAI_SAVE_EXPLANATIONS = _safe_int("XAI_SAVE_EXPLANATIONS", 1)
 XAI_OUTPUT_DIR = RESULTS_DIR / "xai_explanations"
-XAI_OVERLAY_ALPHA = float(os.getenv("XAI_OVERLAY_ALPHA", "0.6"))
+XAI_OVERLAY_ALPHA = _safe_float("XAI_OVERLAY_ALPHA", 0.6)
 
 # XAI thresholds and parameters
-XAI_ATTRIBUTION_THRESHOLD = float(os.getenv("XAI_ATTRIBUTION_THRESHOLD", "0.2"))
-XAI_CAM_THRESHOLD = float(os.getenv("XAI_CAM_THRESHOLD", "0.3"))
-XAI_INTEGRATED_GRAD_STEPS = int(os.getenv("XAI_INTEGRATED_GRAD_STEPS", "50"))
+XAI_ATTRIBUTION_THRESHOLD = _safe_float("XAI_ATTRIBUTION_THRESHOLD", 0.2)
+XAI_CAM_THRESHOLD = _safe_float("XAI_CAM_THRESHOLD", 0.3)
+XAI_INTEGRATED_GRAD_STEPS = _safe_int("XAI_INTEGRATED_GRAD_STEPS", 50)
 
-# Image Enhancement Configuration
-ENHANCEMENT_SAVE_IMAGES = int(os.getenv("ENHANCEMENT_SAVE_IMAGES", "1"))
+# Image Enhancement Configuration (with whitespace stripping)
+ENHANCEMENT_SAVE_IMAGES = _safe_int("ENHANCEMENT_SAVE_IMAGES", 1)
 ENHANCEMENT_OUTPUT_DIR = RESULTS_DIR / "enhanced_images"
-ENHANCEMENT_STYLES = os.getenv(
+ENHANCEMENT_STYLES = _safe_list(
     "ENHANCEMENT_STYLES",
-    "heatmap_overlay,spotlight_heatmap,composite_overlay,color_overlay,blur_background,desaturate_background",
-).split(",")
+    "heatmap_overlay,spotlight_heatmap,composite_overlay,color_overlay,blur_background,desaturate_background"
+)
 
 # Enhancement overlay parameters
-ENHANCEMENT_FOREGROUND_ALPHA = float(os.getenv("ENHANCEMENT_FOREGROUND_ALPHA", "0.6"))
-ENHANCEMENT_BACKGROUND_ALPHA = float(os.getenv("ENHANCEMENT_BACKGROUND_ALPHA", "0.3"))
+ENHANCEMENT_FOREGROUND_ALPHA = _safe_float("ENHANCEMENT_FOREGROUND_ALPHA", 0.6)
+ENHANCEMENT_BACKGROUND_ALPHA = _safe_float("ENHANCEMENT_BACKGROUND_ALPHA", 0.3)
 ENHANCEMENT_BLUR_INTENSITY = (35, 35)
-ENHANCEMENT_DARKNESS_FACTOR = float(os.getenv("ENHANCEMENT_DARKNESS_FACTOR", "0.4"))
+ENHANCEMENT_DARKNESS_FACTOR = _safe_float("ENHANCEMENT_DARKNESS_FACTOR", 0.4)
 
 # Preprocessing integration options
-USE_ENHANCED_IMAGE_IN_PIPELINE = int(os.getenv("USE_ENHANCED_IMAGE_IN_PIPELINE", "1"))
-SAVE_CNN_METADATA = int(os.getenv("SAVE_CNN_METADATA", "1"))
+USE_ENHANCED_IMAGE_IN_PIPELINE = _safe_int("USE_ENHANCED_IMAGE_IN_PIPELINE", 1)
+SAVE_CNN_METADATA = _safe_int("SAVE_CNN_METADATA", 1)
 CNN_METADATA_OUTPUT_DIR = RESULTS_DIR / "cnn_metadata"
 
 # Colormap preferences for different classes (guarded for cv2 availability)
@@ -212,6 +281,7 @@ def validate_config():
     if not DATA_CATEGORIES_FILE.exists():
         raise FileNotFoundError(f"Categories file not found: {DATA_CATEGORIES_FILE}")
 
+    # TESTING should already be validated to 0 or 1 at module load time
     if TESTING == 1:
         # In testing mode, verify cached files exist
         if not CACHED_REASONING_FILE.exists():
@@ -229,15 +299,9 @@ def validate_config():
     if IMAGE_QUALITY < 1 or IMAGE_QUALITY > 100:
         raise ValueError(f"IMAGE_QUALITY must be in range [1, 100], got: {IMAGE_QUALITY}")
 
-    # Validate CNN/XAI configuration
-    if ENABLE_CNN_PREPROCESSING not in [0, 1]:
-        raise ValueError(f"ENABLE_CNN_PREPROCESSING must be 0 or 1, got: {ENABLE_CNN_PREPROCESSING}")
-
+    # Validate CNN/XAI configuration (most already validated at module load time)
     if CNN_BATCH_SIZE < 1:
         raise ValueError(f"CNN_BATCH_SIZE must be >= 1, got: {CNN_BATCH_SIZE}")
-
-    if CNN_DEVICE not in ["auto", "cuda", "cpu", "mps"]:
-        raise ValueError(f"CNN_DEVICE must be one of 'auto', 'cuda', 'cpu', 'mps', got: {CNN_DEVICE}")
 
     if not (0.0 <= CNN_CONFIDENCE_THRESHOLD <= 1.0):
         raise ValueError(f"CNN_CONFIDENCE_THRESHOLD must be in range [0.0, 1.0], got: {CNN_CONFIDENCE_THRESHOLD}")
@@ -269,24 +333,15 @@ def validate_config():
     if not (0.0 <= ENHANCEMENT_DARKNESS_FACTOR <= 1.0):
         raise ValueError(f"ENHANCEMENT_DARKNESS_FACTOR must be in range [0.0, 1.0], got: {ENHANCEMENT_DARKNESS_FACTOR}")
 
-    # Validate XAI methods
-    valid_xai_methods = ["grad_cam", "integrated_grad", "shap", "saliency", "layer_cam", "occlusion"]
+    # Validate XAI methods using module-level constant
     for method in XAI_METHODS:
-        if method.strip() not in valid_xai_methods:
-            raise ValueError(f"Invalid XAI method: {method}. Valid methods: {valid_xai_methods}")
+        if method not in VALID_XAI_METHODS:
+            raise ValueError(f"Invalid XAI method: '{method}'. Valid methods: {list(VALID_XAI_METHODS)}")
 
-    # Validate enhancement styles
-    valid_enhancement_styles = [
-        "heatmap_overlay",
-        "spotlight_heatmap",
-        "composite_overlay",
-        "color_overlay",
-        "blur_background",
-        "desaturate_background",
-    ]
+    # Validate enhancement styles using module-level constant
     for style in ENHANCEMENT_STYLES:
-        if style.strip() not in valid_enhancement_styles:
-            raise ValueError(f"Invalid enhancement style: {style}. Valid styles: {valid_enhancement_styles}")
+        if style not in VALID_ENHANCEMENT_STYLES:
+            raise ValueError(f"Invalid enhancement style: '{style}'. Valid styles: {list(VALID_ENHANCEMENT_STYLES)}")
 
     # Check CNN model file if specified
     if CNN_MODEL_PATH and CNN_MODEL_PATH.strip():
