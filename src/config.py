@@ -218,7 +218,7 @@ if CNN_DEVICE not in VALID_CNN_DEVICES:
 CNN_CONFIDENCE_THRESHOLD = _safe_float("CNN_CONFIDENCE_THRESHOLD", 0.7)
 
 # XAI Methods Configuration (with whitespace stripping)
-XAI_METHODS = _safe_list("XAI_METHODS", "grad_cam,integrated_grad,shap")
+XAI_METHODS = _safe_list("XAI_METHODS", "grad_cam,integrated_grad")
 XAI_SAVE_EXPLANATIONS = _safe_int("XAI_SAVE_EXPLANATIONS", 1)
 XAI_OUTPUT_DIR = RESULTS_DIR / "xai_explanations"
 XAI_OVERLAY_ALPHA = _safe_float("XAI_OVERLAY_ALPHA", 0.6)

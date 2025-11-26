@@ -209,5 +209,7 @@ todos.md
 .archive
 grounding.json
 results
-results-prompts/**
-results-prompts/**
+result-prompts/cnn_metadata
+result-prompts/enhanced_images
+result-prompts/tmp
+result-prompts/xai_explanations

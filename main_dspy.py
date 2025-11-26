@@ -68,6 +68,11 @@ class RuntimeConfig:
     output_dir: Path
     log_level: str
     llm_base_url: str
+    llm_api_key: str
+    model_reasoning: str
+    model_coding: str
+    model_feature_extraction: str
+    model_grounding: str
     image_path: Optional[Path] = None
     highlighted_only: bool = False
     disable_cnn: bool = False
@@ -867,6 +872,11 @@ def create_runtime_config(args) -> RuntimeConfig:
         output_dir=args.output_dir,
         log_level=args.log_level,
         llm_base_url=args.llm_base_url,
+        llm_api_key=args.llm_api_key,
+        model_reasoning=args.model_reasoning,
+        model_coding=args.model_coding,
+        model_feature_extraction=args.model_feature_extraction,
+        model_grounding=args.model_grounding,
         image_path=args.image_path,
         highlighted_only=args.highlighted_only,
         disable_cnn=args.disable_cnn,
@@ -1137,6 +1147,41 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--llm-api-key",
+        type=str,
+        default=config.LLM_API_KEY,
+        help="API key for LLM server",
+    )
+
+    parser.add_argument(
+        "--model-reasoning",
+        type=str,
+        default=config.MODEL_REASONING,
+        help="Model for reasoning stage",
+    )
+
+    parser.add_argument(
+        "--model-coding",
+        type=str,
+        default=config.MODEL_CODING,
+        help="Model for coding stage",
+    )
+
+    parser.add_argument(
+        "--model-feature-extraction",
+        type=str,
+        default=config.MODEL_FEATURE_EXTRACTION,
+        help="Model for feature extraction stage",
+    )
+
+    parser.add_argument(
+        "--model-grounding",
+        type=str,
+        default=config.MODEL_GROUNDING,
+        help="Model for grounding stage",
+    )
+
+    parser.add_argument(
         "--show-config",
         action="store_true",
         help="Print configuration and exit",
@@ -1213,6 +1258,14 @@ if __name__ == "__main__":
     # Update essential config paths that affect caching (minimal mutation)
     # Note: These are necessary for cached file paths to work correctly
     config.RESULTS_DIR = runtime_config.output_dir
+
+    # Update LLM and Model configuration from runtime arguments
+    config.LLM_BASE_URL = runtime_config.llm_base_url
+    config.LLM_API_KEY = runtime_config.llm_api_key
+    config.MODEL_REASONING = runtime_config.model_reasoning
+    config.MODEL_CODING = runtime_config.model_coding
+    config.MODEL_FEATURE_EXTRACTION = runtime_config.model_feature_extraction
+    config.MODEL_GROUNDING = runtime_config.model_grounding
 
     # Update CNN settings for the preprocessing pipeline
     if runtime_config.disable_cnn:

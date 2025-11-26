@@ -184,6 +184,17 @@ class ImageEnhancer:
         cam_thresh = int(getattr(config, "XAI_CAM_THRESHOLD", 0.3) * 255)
         attr_thresh = int(getattr(config, "XAI_ATTRIBUTION_THRESHOLD", 0.2) * 255)
 
+        # Determine target size
+        if image_shape is not None:
+            target_h, target_w = image_shape
+        else:
+            target_h, target_w = config.CNN_INPUT_SIZE if hasattr(config, 'CNN_INPUT_SIZE') else (224, 224)
+
+        def _resize_mask(mask: np.ndarray) -> np.ndarray:
+            if mask.shape[:2] != (target_h, target_w):
+                return cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+            return mask
+
         raw_cam_masks: List[np.ndarray] = []
         raw_attr_masks: List[np.ndarray] = []
         masks: Dict[str, np.ndarray] = {}
@@ -200,6 +211,7 @@ class ImageEnhancer:
                     cam_binary = np.where(normalized >= cam_thresh, 255, 0).astype(np.uint8)
                     cam_binary = _morph_clean(cam_binary)
                     cam_binary = _largest_component(cam_binary)
+                    cam_binary = _resize_mask(cam_binary)
                     masks[f"{method_name}_cam"] = cam_binary
                     raw_cam_masks.append(cam_binary)
 
@@ -216,6 +228,7 @@ class ImageEnhancer:
                     attr_binary = np.where(normalized_attr >= attr_thresh, 255, 0).astype(np.uint8)
                     attr_binary = _morph_clean(attr_binary)
                     attr_binary = _largest_component(attr_binary)
+                    attr_binary = _resize_mask(attr_binary)
                     masks[f"{method_name}_attr"] = attr_binary
                     raw_attr_masks.append(attr_binary)
 

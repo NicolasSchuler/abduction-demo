@@ -48,6 +48,21 @@ try:
     )
     from pytorch_grad_cam.utils.image import show_cam_on_image
     from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+    
+    # Monkey-patch BaseCAM.__del__ to suppress AttributeError
+    from pytorch_grad_cam.base_cam import BaseCAM
+    
+    original_del = BaseCAM.__del__
+
+    def safe_del(self, original_del=original_del):
+        try:
+            if original_del:
+                original_del(self)
+        except AttributeError:
+            pass
+
+    BaseCAM.__del__ = safe_del
+
 except ImportError:  # grad-cam missing
     GradCAM = None
     GradCAMPlusPlus = None
@@ -108,10 +123,20 @@ class XAIExplainer:
             self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Configure XAI methods
-        self.methods = methods or ["grad_cam", "integrated_grad", "shap"]
+        self.methods = methods or ["grad_cam", "integrated_grad"]
+        
+        # Patch model to disable inplace operations (fixes "view and is being modified inplace" errors)
+        self._patch_model_inplace(self.model)
+        
         self._setup_explainers()
 
         logger.info(f"Initialized XAI explainer with methods: {self.methods}")
+
+    def _patch_model_inplace(self, model: nn.Module):
+        """Disable inplace operations in the model to support gradient hooks."""
+        for module in model.modules():
+            if hasattr(module, "inplace"):
+                module.inplace = False
         logger.info(f"Output directory: {self.output_dir}")
 
     def _setup_explainers(self):
@@ -442,7 +467,7 @@ class XAIExplainer:
         guided_enabled = os.getenv("XAI_GRADCAM_GUIDED", "1") == "1"
         if guided_enabled and GuidedBackpropReLUModel is not None:
             try:
-                gb_model = GuidedBackpropReLUModel(model=self.model)
+                gb_model = GuidedBackpropReLUModel(model=self.model, device=self.device)
                 gb = gb_model(input_tensor, target_category=target_idx)[0]  # [C,H,W]
                 gb = np.mean(np.abs(gb), axis=0)
                 gb = (gb - gb.min()) / (gb.max() - gb.min() + 1e-8)
@@ -487,7 +512,7 @@ class XAIExplainer:
         )
 
         # Process attributions
-        attributions = attributions.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        attributions = attributions.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         attributions = np.abs(attributions)  # Take absolute values
         attributions = np.mean(attributions, axis=2)  # Average across channels
 
@@ -507,7 +532,7 @@ class XAIExplainer:
         saliency = self.explainers["saliency"].attribute(input_tensor, target=target_idx)
 
         # Process saliency
-        saliency = saliency.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        saliency = saliency.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         saliency = np.abs(saliency)
         saliency = np.mean(saliency, axis=2)
 
@@ -566,12 +591,12 @@ class XAIExplainer:
 
         occlusion_attr = self.explainers["occlusion"].attribute(
             x,
-            strides=(1, 1, stride, stride),
+            strides=(1, stride, stride),
             target=target_idx,
-            sliding_window_shapes=(1, x.size(1), patch, patch),
+            sliding_window_shapes=(x.size(1), patch, patch),
             baselines=baseline,
         )
-        occ = occlusion_attr.squeeze(0).abs().mean(dim=0).cpu().numpy()
+        occ = occlusion_attr.squeeze(0).abs().mean(dim=0).detach().cpu().numpy()
         if occ.max() > 0:
             occ = occ / occ.max()
 
@@ -606,11 +631,21 @@ class XAIExplainer:
         except RuntimeError as e:
             msg = str(e).lower()
             if "view" in msg and "inplace" in msg:
-                baseline = torch.zeros_like(input_for_shap).to(self.device)
-                self.explainers["shap"] = shap.GradientExplainer(self.model, baseline)
-                shap_values = self.explainers["shap"].shap_values(input_for_shap)
-                shap_method = "GradientExplainer"
-                logger.warning("SHAP DeepExplainer raised inplace-view error; retried with GradientExplainer.")
+                logger.warning("SHAP DeepExplainer raised inplace-view error; retrying with GradientExplainer.")
+                try:
+                    baseline = torch.zeros_like(input_for_shap).to(self.device)
+                    self.explainers["shap"] = shap.GradientExplainer(self.model, baseline)
+                    shap_values = self.explainers["shap"].shap_values(input_for_shap)
+                    shap_method = "GradientExplainer"
+                except Exception as e2:
+                    logger.warning(f"SHAP fallback also failed: {e2}")
+                    # Return None or empty result to avoid crashing the pipeline
+                    return {
+                        "shap_values": None,
+                        "importance_map": np.zeros((input_tensor.shape[2], input_tensor.shape[3])),
+                        "method": "SHAP (Failed)",
+                        "description": "SHAP explanation failed due to inplace-view errors.",
+                    }
             else:
                 raise
 
@@ -619,7 +654,7 @@ class XAIExplainer:
         else:
             target_shap = shap_values[target_idx : target_idx + 1]
 
-        target_shap = target_shap.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        target_shap = target_shap.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         shap_importance = np.abs(target_shap).mean(axis=2)
 
         if shap_importance.max() > 0:

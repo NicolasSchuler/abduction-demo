@@ -248,29 +248,44 @@ class PreprocessingPipeline:
                 result["enhanced_images"] = enhanced_images
                 logger.info(f"  Generated enhancements: {list(enhanced_images.keys())}")
 
-                # Select primary enhanced image for pipeline use
-                if config.USE_ENHANCED_IMAGE_IN_PIPELINE and enhanced_images:
-                    primary_style = "heatmap_overlay"  # Default style
-                    if primary_style in enhanced_images:
-                        result["pipeline_image"] = enhanced_images[primary_style]
-                        logger.info(f"  Selected enhanced image for pipeline: {primary_style}")
-                    else:
-                        # Use first available enhancement
-                        first_style = list(enhanced_images.keys())[0]
-                        result["pipeline_image"] = enhanced_images[first_style]
-                        logger.info(f"  Selected enhanced image for pipeline: {first_style} (fallback)")
-                else:
-                    result["pipeline_image"] = original_image
-                    logger.info("  Using original image for pipeline")
-
             except Exception as e:
                 logger.error(f"Image enhancement failed: {e}")
                 result["enhanced_images"] = None
-                result["pipeline_image"] = original_image
         else:
             logger.info("Image enhancement disabled")
             result["enhanced_images"] = None
-            result["pipeline_image"] = original_image
+
+        # Step 3.5: Select Pipeline Image
+        result["pipeline_image"] = original_image  # Default
+        
+        if config.USE_ENHANCED_IMAGE_IN_PIPELINE:
+            # Priority 1: Use Grad-CAM visualization directly if available
+            if (
+                result["explanations"]
+                and "grad_cam" in result["explanations"]
+                and result["explanations"]["grad_cam"]
+                and "visualization" in result["explanations"]["grad_cam"]
+            ):
+                vis_array = result["explanations"]["grad_cam"]["visualization"]
+                result["pipeline_image"] = Image.fromarray(vis_array)
+                logger.info("  Selected Grad-CAM visualization for pipeline")
+            
+            # Priority 2: Use enhanced images (heatmap_overlay)
+            elif result["enhanced_images"]:
+                enhanced_images = result["enhanced_images"]
+                primary_style = "heatmap_overlay"  # Default style
+                if primary_style in enhanced_images:
+                    result["pipeline_image"] = enhanced_images[primary_style]
+                    logger.info(f"  Selected enhanced image for pipeline: {primary_style}")
+                else:
+                    # Use first available enhancement
+                    first_style = list(enhanced_images.keys())[0]
+                    result["pipeline_image"] = enhanced_images[first_style]
+                    logger.info(f"  Selected enhanced image for pipeline: {first_style} (fallback)")
+            else:
+                logger.info("  Using original image for pipeline (no enhancements available)")
+        else:
+            logger.info("  Using original image for pipeline")
 
         # Step 4: Save metadata
         if self.save_outputs:
