@@ -68,13 +68,15 @@ def _validate_url(url: str, env_var: str) -> str:
 # Valid Values Constants (used in validation)
 # =============================================================================
 
-VALID_XAI_METHODS = frozenset([
-    "grad_cam", "integrated_grad", "shap", "saliency", "layer_cam", "occlusion"
-])
+VALID_XAI_METHODS = frozenset(["grad_cam", "integrated_grad", "shap", "saliency", "layer_cam", "occlusion"])
 
 VALID_ENHANCEMENT_STYLES = frozenset([
-    "heatmap_overlay", "spotlight_heatmap", "composite_overlay",
-    "color_overlay", "blur_background", "desaturate_background"
+    "heatmap_overlay",
+    "spotlight_heatmap",
+    "composite_overlay",
+    "color_overlay",
+    "blur_background",
+    "desaturate_background",
 ])
 
 VALID_CNN_DEVICES = frozenset(["auto", "cuda", "cpu", "mps"])
@@ -107,7 +109,7 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 MODEL_REASONING = os.getenv("MODEL_REASONING", "qwen/qwen3-30b-a3b-2507")
 MODEL_CODING = os.getenv("MODEL_CODING", "gemini")  # Placeholder - needs implementation
 MODEL_FEATURE_EXTRACTION = os.getenv("MODEL_FEATURE_EXTRACTION", "huggingface/qwen/qwen3-coder-30b")
-MODEL_GROUNDING = os.getenv("MODEL_GROUNDING", "huggingface/google/gemma-3-27b")
+MODEL_GROUNDING = os.getenv("MODEL_GROUNDING", "openai/qwen3-vl:235b-a22b-instruct")
 
 # =============================================================================
 # File Paths
@@ -233,7 +235,7 @@ ENHANCEMENT_SAVE_IMAGES = _safe_int("ENHANCEMENT_SAVE_IMAGES", 1)
 ENHANCEMENT_OUTPUT_DIR = RESULTS_DIR / "enhanced_images"
 ENHANCEMENT_STYLES = _safe_list(
     "ENHANCEMENT_STYLES",
-    "heatmap_overlay,spotlight_heatmap,composite_overlay,color_overlay,blur_background,desaturate_background"
+    "heatmap_overlay,spotlight_heatmap,composite_overlay,color_overlay,blur_background,desaturate_background",
 )
 
 # Enhancement overlay parameters

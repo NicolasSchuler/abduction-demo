@@ -49,6 +49,15 @@ def parse_default_probabilities(file_path):
         return {}
 
 def main():
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="Run experiment with configurable grounding model")
+    parser.add_argument("--model-grounding", type=str, default=config.MODEL_GROUNDING, help="Model for grounding stage")
+    args = parser.parse_args()
+    
+    # Update config
+    config.MODEL_GROUNDING = args.model_grounding
+    logger.info(f"Using grounding model: {config.MODEL_GROUNDING}")
+
     # Configuration
     collage_dir = Path("collage")
     output_dir = Path("results/experiment")

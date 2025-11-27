@@ -381,8 +381,8 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
         if highlighted_only:
-            grounding_desc = """A json, mapping feature names to feature being FULLY HIGHLIGHTED IN RED AND present in the input image.
-        ONLY FULLY RED HIGHLIGHTED FEATURES ARE CONSIDERED! FEATURES THAT ARE NOT FULLY RED HIGHLIGHTED HAVE A '0.0' PROBABILITY! If it is too ambigious, omit the feature or give it a '0.0' propability.
+            grounding_desc = """A json, mapping feature names to feature being FULLY HIGHLIGHTED BY THE HEATMAP present in the input image.
+        ONLY FULLY HIGHLIGHTED FEATURES BY THE HEATMAP ARE CONSIDERED! FEATURES THAT ARE NOT FULLY HIGHLIGHTED BY THE HEATMAP HAVE A '0.0' PROBABILITY! If it is too ambigious, omit the feature or give it a '0.0' propability.
         """
             image_desc = "Image to be analyzed for red highlighted features."
         else:
@@ -392,6 +392,9 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
             """
             image_desc = "Image to be analyzed for present features"
 
+        print(config.MODEL_GROUNDING)
+        print(config.LLM_BASE_URL)
+        print(config.LLM_API_KEY)
         lm = dspy.LM(
             config.MODEL_GROUNDING,
             api_base=config.LLM_BASE_URL,
