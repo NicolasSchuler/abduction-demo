@@ -208,8 +208,9 @@ todos.md
 
 .archive
 grounding.json
-results
 result-prompts/cnn_metadata
 result-prompts/enhanced_images
 result-prompts/tmp
 result-prompts/xai_explanations
+results/xai_explanations
+.DS_Store
