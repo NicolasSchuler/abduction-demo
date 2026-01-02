@@ -19,7 +19,7 @@ The system transforms the opaque prediction "it is a cat" into the interpretable
 
 ## Pipeline Overview
 
-![Intersymbolic Explainability Pipeline](data/paper/xai_abduction_overview.pdf)
+![Intersymbolic Explainability Pipeline](docs/static/images/xai_abduction_overview.png)
 
 **Figure 1.** The Intersymbolic Explainability Pipeline architecture. The system operates in four phases: (1) **Phase 0** constructs an ontology and knowledge base encoding domain expertise about distinguishing features; (2) **Phase 1** performs subsymbolic perception through CNN prediction and XAI-based explanation generation; (3) **Phase 2** translates visual evidence into symbolic representations; (4) **Phase 3** applies abductive reasoning to derive explanations grounded in formal logic. The output provides both a classification decision and a human-interpretable justification.
 
