@@ -121,8 +121,12 @@ class ImageEnhancer:
         # Both PIL and numpy arrays are expected to be RGB, convert to BGR for OpenCV
         if len(original_array.shape) == 3 and original_array.shape[2] == 3:
             original_bgr = cv2.cvtColor(original_array, cv2.COLOR_RGB2BGR)
+        elif len(original_array.shape) == 2:
+            # Grayscale image - convert to 3-channel BGR for consistency
+            original_bgr = cv2.cvtColor(original_array, cv2.COLOR_GRAY2BGR)
         else:
-            # Grayscale or unexpected format - use as-is
+            # Unexpected format - use as-is with warning
+            logger.warning(f"Unexpected image format with shape {original_array.shape}, using as-is")
             original_bgr = original_array
 
         enhanced_images = {}
@@ -162,6 +166,10 @@ class ImageEnhancer:
         - Largest connected component retention
         - Optional intersection of CAM and attribution masks to suppress background
         """
+        # Validate cv2 availability before using cv2 functions
+        if cv2 is None:
+            logger.warning("OpenCV not available, returning empty masks")
+            return {}
 
         def _morph_clean(binary: np.ndarray, open_ks: int = 3, dilate_ks: int = 3) -> np.ndarray:
             kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_ks, open_ks))

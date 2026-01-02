@@ -1,3 +1,4 @@
+import base64
 import logging
 from pathlib import Path
 from typing import Dict, Tuple, Union
@@ -93,7 +94,19 @@ def blur_background(
     Examples:
         blur_result = blur_background(image, mask, blur_intensity=(51, 51))
         cv2.imwrite("image.jpg", blur_result)
+
+    Raises:
+        ValueError: If blur_intensity values are not odd positive integers.
     """
+    # Validate blur_intensity - Gaussian blur requires odd kernel sizes
+    if blur_intensity[0] % 2 == 0 or blur_intensity[1] % 2 == 0:
+        raise ValueError(
+            f"blur_intensity must contain odd numbers, got {blur_intensity}. "
+            "OpenCV GaussianBlur requires odd kernel sizes."
+        )
+    if blur_intensity[0] <= 0 or blur_intensity[1] <= 0:
+        raise ValueError(f"blur_intensity must contain positive numbers, got {blur_intensity}")
+
     # Create a blurred version of the image
     blurred_image = cv2.GaussianBlur(image, blur_intensity, 0)
 
@@ -186,10 +199,20 @@ def apply_spotlight_heatmap(
         spotlight_result = apply_spotlight_heatmap(image, mask, darkness_factor=0.2)
         cv2.imwrite("image.jpg", spotlight_result)
     """
+    # Handle empty or flat masks to avoid NaN in normalization
+    if mask is None or mask.sum() == 0:
+        logger.warning("Empty mask provided to apply_spotlight_heatmap, returning original image")
+        return image.copy()
+
     # 1. Create the gradient heatmap region (same as the previous method)
     dist_transform = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
-    gradient_mask = normalized_dist.astype(np.uint8)
+
+    # Handle flat masks where max == min to avoid NaN
+    if dist_transform.max() == dist_transform.min():
+        gradient_mask = np.zeros_like(dist_transform, dtype=np.uint8)
+    else:
+        normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
+        gradient_mask = normalized_dist.astype(np.uint8)
     heatmap_color = cv2.applyColorMap(gradient_mask, colormap)
     heatmap_region = cv2.bitwise_and(heatmap_color, heatmap_color, mask=mask)
 
@@ -236,12 +259,22 @@ def apply_composite_overlay(
         )
         cv2.imwrite("image.jpg", composite_result)
     """
+    # Handle empty or flat masks to avoid NaN in normalization
+    if mask is None or mask.sum() == 0:
+        logger.warning("Empty mask provided to apply_composite_overlay, returning original image")
+        return image.copy()
+
     # === Part 1: Create the Highlighted Foreground ===
 
     # Generate the gradient for the object
     dist_transform = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
-    gradient_mask = normalized_dist.astype(np.uint8)
+
+    # Handle flat masks where max == min to avoid NaN
+    if dist_transform.max() == dist_transform.min():
+        gradient_mask = np.zeros_like(dist_transform, dtype=np.uint8)
+    else:
+        normalized_dist = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX)
+        gradient_mask = normalized_dist.astype(np.uint8)
 
     # Isolate the heatmap and original object regions
     heatmap_region = cv2.applyColorMap(gradient_mask, colormap)
@@ -316,7 +349,7 @@ def draw_border(
     return output_image
 
 
-def encode_base64_simple(image_path: Path):
+def encode_base64_simple(image_path: Path) -> str:
     """
     Simple base64 encoding using direct file reading (preserves original format).
 
@@ -326,8 +359,6 @@ def encode_base64_simple(image_path: Path):
     Returns:
         str: Base64 encoded string of the image file.
     """
-    import base64
-
     try:
         with open(image_path, "rb") as image_file:
             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
@@ -338,7 +369,7 @@ def encode_base64_simple(image_path: Path):
         raise ValueError(f"Error reading image file: {e}")
 
 
-def encode_base64_resized(image_path: Path, max_width: int = 800, max_height: int = 600, quality: int = 85):
+def encode_base64_resized(image_path: Path, max_width: int = 800, max_height: int = 600, quality: int = 85) -> str:
     """
     Resize image and encode to base64 to reduce size for LLM context.
 
@@ -351,8 +382,6 @@ def encode_base64_resized(image_path: Path, max_width: int = 800, max_height: in
     Returns:
         str: Base64 encoded string of the resized image.
     """
-    import base64
-
     try:
         # Read the image
         image = cv2.imread(str(image_path.absolute()))
@@ -393,7 +422,7 @@ def encode_base64_resized(image_path: Path, max_width: int = 800, max_height: in
 
 def encode_base64_aggressive_compression(
     image_path: Path, max_width: int = 400, max_height: int = 400, quality: int = 50
-):
+) -> str:
     """
     Aggressively compress image for minimal base64 size while preserving key features.
 
@@ -406,8 +435,6 @@ def encode_base64_aggressive_compression(
     Returns:
         str: Base64 encoded string of the heavily compressed image.
     """
-    import base64
-
     try:
         # Read the image
         image = cv2.imread(str(image_path))

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="Bridging Explanations and Logics: Opportunities for Multimodal Language Models">
+  <meta name="description" content="A framework bridging subsymbolic XAI explanations with symbolic reasoning through Multimodal Language Models, enabling abductive reasoning for trustworthy AI.">
+  <meta name="keywords" content="Intersymbolic AI, XAI, Explainable AI, MLM, Multimodal Language Models, Abduction, ProbLog, Neuro-symbolic AI, Trustworthy AI, Grad-CAM">
+  <meta name="author" content="Nicolas Sebastian Schuler, Vincenzo Scotti, Matteo Camilli, Raffaela Mirandola">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="KASTEL - Karlsruhe Institute of Technology">
+  <meta property="og:title" content="Bridging Explanations and Logics: Opportunities for Multimodal Language Models">
+  <meta property="og:description" content="A framework bridging subsymbolic XAI explanations with symbolic reasoning through Multimodal Language Models, enabling abductive reasoning for trustworthy AI.">
+  <meta property="og:url" content="https://nicolasschuler.github.io/abduction-demo/">
+  <meta property="og:image" content="https://nicolasschuler.github.io/abduction-demo/static/images/xai_abduction_overview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Intersymbolic Explainability Pipeline - Bridging XAI and Logic">
+  <meta property="article:published_time" content="2025-01-01T00:00:00.000Z">
+  <meta property="article:author" content="Nicolas Sebastian Schuler">
+  <meta property="article:section" content="Research">
+  <meta property="article:tag" content="Intersymbolic AI">
+  <meta property="article:tag" content="Explainable AI">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@KaborLab">
+  <meta name="twitter:creator" content="@NicolasSchuler">
+  <meta name="twitter:title" content="Bridging Explanations and Logics: Opportunities for Multimodal Language Models">
+  <meta name="twitter:description" content="A framework bridging subsymbolic XAI explanations with symbolic reasoning through Multimodal Language Models, enabling abductive reasoning for trustworthy AI.">
+  <meta name="twitter:image" content="https://nicolasschuler.github.io/abduction-demo/static/images/xai_abduction_overview.png">
+  <meta name="twitter:image:alt" content="Intersymbolic Explainability Pipeline - Bridging XAI and Logic">
+
+  <!-- Academic/Research Specific -->
+  <meta name="citation_title" content="Bridging Explanations and Logics: Opportunities for Multimodal Language Models">
+  <meta name="citation_author" content="Schuler, Nicolas Sebastian">
+  <meta name="citation_author" content="Scotti, Vincenzo">
+  <meta name="citation_author" content="Camilli, Matteo">
+  <meta name="citation_author" content="Mirandola, Raffaela">
+  <meta name="citation_publication_date" content="2025">
+  <meta name="citation_conference_title" content="International Symposium on Leveraging Applications of Formal Methods, Verification and Validation (AISoLA 2025)">
+  <meta name="citation_pdf_url" content="https://nicolasschuler.github.io/abduction-demo/abduction-mlm.pdf">
+  <meta name="citation_doi" content="10.5445/IR/1000184717">
+  
+  <!-- Additional SEO -->
+  <meta name="theme-color" content="#2563eb">
+  <meta name="msapplication-TileColor" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://ajax.googleapis.com">
+  <!-- <link rel="preconnect" href="https://documentcloud.adobe.com"> -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+
+  <title>Bridging Explanations and Logics | Schuler et al. | AISoLA 2025</title>
+  
+  <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+  <link rel="apple-touch-icon" href="static/images/favicon.ico">
+  
+  <!-- Critical CSS - Load synchronously -->
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+  
+  <!-- Non-critical CSS - Load asynchronously -->
+  <link rel="preload" href="static/css/bulma-carousel.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  
+  <!-- Fallback for browsers that don't support preload -->
+  <noscript>
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  </noscript>
+  
+  <!-- Fonts - Optimized loading -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Defer non-critical JavaScript -->
+  <script defer src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <!-- <script defer src="https://documentcloud.adobe.com/view-sdk/main.js"></script> -->
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script defer src="static/js/bulma-carousel.min.js"></script>
+  <script defer src="static/js/bulma-slider.min.js"></script>
+  <script defer src="static/js/index.js"></script>
+  
+  <!-- Structured Data for Academic Papers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ScholarlyArticle",
+    "headline": "Bridging Explanations and Logics: Opportunities for Multimodal Language Models",
+    "description": "A framework bridging subsymbolic XAI explanations with symbolic reasoning through Multimodal Language Models, enabling abductive reasoning for trustworthy AI.",
+    "author": [
+      {
+        "@type": "Person",
+        "name": "Nicolas Sebastian Schuler",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "KASTEL, Karlsruhe Institute of Technology"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Vincenzo Scotti",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "KASTEL, Karlsruhe Institute of Technology"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Matteo Camilli",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "DEIB, Politecnico di Milano"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Raffaela Mirandola",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "KASTEL, Karlsruhe Institute of Technology"
+        }
+      }
+    ],
+    "datePublished": "2025",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Springer"
+    },
+    "url": "https://nicolasschuler.github.io/abduction-demo/",
+    "image": "https://nicolasschuler.github.io/abduction-demo/static/images/xai_abduction_overview.png",
+    "keywords": ["Intersymbolic AI", "XAI", "Explainable AI", "MLM", "Abduction", "ProbLog", "Neuro-symbolic AI"],
+    "abstract": "As subsymbolic Artificial Intelligence (AI) systems have become increasingly integrated into decision support tools, there is a consequent need for transparency and interpretability. While eXplainable AI (XAI) techniques offer valuable insights into model behavior, they often lack the formal rigor required for causal interpretation and verification – qualities inherent to symbolic AI. This paper presents a framework designed to bridge the gap between subsymbolic explanations and symbolic reasoning through the application of Multimodal Language Models (MLMs). Our approach combines the output of XAI methods with symbolic knowledge bases encoded in a logic programming language, enabling abductive reasoning and yielding causal interpretations of explanations produced over predictions.",
+    "isAccessibleForFree": true,
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "mainEntity": {
+      "@type": "WebPage",
+      "@id": "https://nicolasschuler.github.io/abduction-demo/"
+    },
+    "about": [
+      {
+        "@type": "Thing",
+        "name": "Explainable Artificial Intelligence"
+      },
+      {
+        "@type": "Thing",
+        "name": "Neuro-symbolic AI"
+      },
+      {
+        "@type": "Thing",
+        "name": "Abductive Reasoning"
+      }
+    ]
+  }
+  </script>
+  
+  <!-- Website/Organization Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "KASTEL - Karlsruhe Institute of Technology",
+    "url": "https://kastel.kit.edu",
+    "logo": "https://nicolasschuler.github.io/abduction-demo/static/images/favicon.ico",
+    "sameAs": [
+      "https://github.com/NicolasSchuler/abduction-demo"
+    ]
+  }
+  </script>
+</head>
+<body>
+
+
+  <!-- Scroll to Top Button -->
+  <button class="scroll-to-top" onclick="scrollToTop()" title="Scroll to top" aria-label="Scroll to top">
+    <i class="fas fa-chevron-up"></i>
+  </button>
+
+  <main id="main-content">
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">Bridging Explanations and Logics</h1>
+            <h2 class="subtitle is-3">Opportunities for Multimodal Language Models</h2>
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">
+                <a href="mailto:nicolas.schuler@kit.edu">Nicolas Sebastian Schuler</a><sup>1</sup>,</span>
+              <span class="author-block">
+                <a href="mailto:vincenzo.scotti@kit.edu">Vincenzo Scotti</a><sup>1</sup>,</span>
+              <span class="author-block">
+                <a href="mailto:matteo.camilli@polimi.it">Matteo Camilli</a><sup>2</sup>,</span>
+              <span class="author-block">
+                <a href="mailto:raffaela.mirandola@kit.edu">Raffaela Mirandola</a><sup>1</sup>
+              </span>
+            </div>
+
+            <div class="is-size-5 publication-authors">
+              <span class="author-block"><sup>1</sup>KASTEL, Karlsruhe Institute of Technology, Germany</span><br>
+              <span class="author-block"><sup>2</sup>DEIB, Politecnico di Milano, Italy</span><br>
+              <span class="author-block" style="margin-top: 0.5em; display: inline-block;"><strong>AISoLA 2025</strong></span>
+            </div>
+
+            <div class="column has-text-centered">
+              <div class="publication-links">
+                <span class="link-block">
+                  <span title="Soon TBD"
+                  class="external-link button is-normal is-rounded is-dark" style="opacity: 0.6; cursor: not-allowed;">
+                  <span class="icon">
+                    <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                  </span>
+                </span>
+
+                <span class="link-block">
+                  <a href="https://github.com/NicolasSchuler/abduction-demo" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                  </a>
+                </span>
+
+                <span class="link-block">
+                  <a href="https://doi.org/10.5445/IR/1000184717" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="ai ai-doi"></i>
+                  </span>
+                  <span>DOI</span>
+                  </a>
+                </span>
+
+                <!-- arXiv button - uncomment when available
+                <span class="link-block">
+                  <a href="https://arxiv.org/abs/ARXIV_ID" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
+                  </a>
+                </span>
+                -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+<!-- Pipeline Overview -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <img src="static/images/xai_abduction_overview.png" alt="Intersymbolic Explainability Pipeline" class="teaser-image" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+      <h2 class="subtitle has-text-centered" style="margin-top: 1.5rem;">
+        <strong>Probabilistic Abduction Framework for Intersymbolic Explainability:</strong> Our pipeline bridges subsymbolic neural perception with symbolic reasoning through MLM-assisted translation and ProbLog-based abductive inference.
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End Pipeline Overview -->
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            As subsymbolic Artificial Intelligence (AI) systems have become increasingly integrated into decision support tools, there is a consequent need for transparency and interpretability. While eXplainable AI (XAI) techniques offer valuable insights into model behavior, they often lack the formal rigor required for causal interpretation and verification – qualities inherent to symbolic AI. This paper presents a framework designed to bridge the gap between subsymbolic explanations and symbolic reasoning through the application of Multimodal Language Models (MLMs). Our approach combines the output of XAI methods with symbolic knowledge bases encoded in a logic programming language, enabling abductive reasoning and yielding causal interpretations of explanations produced over predictions. In our framework, MLMs serve as <em>intersymbolic translators</em>, converting visual or textual explanations into structured logical assertions that can be processed by reasoning engines for verification. Through this integration, we aim to enhance the interpretability of AI systems and promote the use of sound reasoning to increase the trustworthiness of the observed AI-based system.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+
+<!-- Method Overview Carousel -->
+<section class="hero is-small">
+  <div class="hero-body">
+    <div class="container">
+      <h2 class="title is-3 has-text-centered">Method Overview</h2>
+      <div id="results-carousel" class="carousel results-carousel">
+        <div class="item">
+          <img src="static/images/phase_0.png" alt="Phase 0: Ontology and Knowledge Base Construction" loading="lazy" style="max-height: 400px; object-fit: contain;"/>
+          <h2 class="subtitle has-text-centered">
+            <strong>Phase 0:</strong> LLM-assisted Ontology and Knowledge Base Construction - Domain knowledge is elicited and encoded as ProbLog facts.
+          </h2>
+        </div>
+        <div class="item">
+          <img src="static/images/phase_1_stage_2.png" alt="Phase 1: Subsymbolic Perception" loading="lazy" style="max-height: 400px; object-fit: contain;"/>
+          <h2 class="subtitle has-text-centered">
+            <strong>Phase 1:</strong> Subsymbolic Perception - CNN classification followed by Grad-CAM++ explanation generation.
+          </h2>
+        </div>
+        <div class="item">
+          <img src="static/images/phase_2.png" alt="Phase 2: Intersymbolic Translation" loading="lazy" style="max-height: 400px; object-fit: contain;"/>
+          <h2 class="subtitle has-text-centered">
+            <strong>Phase 2:</strong> Intersymbolic Translation - MLM grounds visual features from heatmaps into probabilistic logic facts.
+          </h2>
+        </div>
+        <div class="item">
+          <img src="static/images/phase_3.png" alt="Phase 3: Abductive Reasoning" loading="lazy" style="max-height: 400px; object-fit: contain;"/>
+          <h2 class="subtitle has-text-centered">
+            <strong>Phase 3:</strong> Abductive Reasoning - ProbLog inference engine computes the most probable explanation.
+          </h2>
+        </div>
+        <div class="item">
+          <img src="static/images/features.png" alt="Cross-Paired Feature Analysis" loading="lazy" style="max-height: 500px; object-fit: contain;"/>
+          <h2 class="subtitle has-text-centered">
+            <strong>Feature Analysis:</strong> Cross-paired features from the grounding stage showing shared and unique discriminators across classes.
+          </h2>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Method Overview Carousel -->
+
+
+
+
+<!-- Experimental Results -->
+<section class="hero is-small is-light">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 has-text-centered">Experimental Results</h2>
+      <div class="content">
+        <p class="has-text-centered">
+          We evaluated our pipeline on a custom dataset with <strong>Cat</strong> and <strong>Dog</strong> as in-distribution classes,
+          and <strong>Fox</strong>, <strong>Tiger</strong>, and <strong>Wolf</strong> as out-of-distribution (OOD) classes.
+        </p>
+
+        <div class="table-container">
+          <table class="table is-bordered is-striped is-hoverable is-fullwidth">
+            <thead>
+              <tr>
+                <th>Ground Truth</th>
+                <th>Support</th>
+                <th colspan="2" class="has-text-centered">CNN Prediction</th>
+                <th colspan="2" class="has-text-centered">Symbolic Inference</th>
+              </tr>
+              <tr>
+                <th></th>
+                <th></th>
+                <th>P(Cat)</th>
+                <th>P(Dog)</th>
+                <th>P(Cat)</th>
+                <th>P(Dog)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Cat</strong></td>
+                <td>15</td>
+                <td>0.994</td>
+                <td>0.006</td>
+                <td>0.874</td>
+                <td>0.126</td>
+              </tr>
+              <tr>
+                <td><strong>Dog</strong></td>
+                <td>15</td>
+                <td>0.357</td>
+                <td>0.643</td>
+                <td>0.403</td>
+                <td>0.597</td>
+              </tr>
+              <tr class="has-background-warning-light">
+                <td><strong>Fox</strong> (OOD)</td>
+                <td>12</td>
+                <td>0.717</td>
+                <td>0.283</td>
+                <td>0.795</td>
+                <td>0.205</td>
+              </tr>
+              <tr class="has-background-warning-light">
+                <td><strong>Tiger</strong> (OOD)</td>
+                <td>12</td>
+                <td>0.893</td>
+                <td>0.107</td>
+                <td>0.665</td>
+                <td>0.335</td>
+              </tr>
+              <tr class="has-background-danger-light">
+                <td><strong>Wolf</strong> (OOD)</td>
+                <td>12</td>
+                <td>0.461</td>
+                <td>0.539</td>
+                <td style="color: #48c774; font-weight: bold;">0.063</td>
+                <td style="color: #48c774; font-weight: bold;">0.937</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="notification is-info is-light">
+          <p>
+            <strong>Key Finding:</strong> The CNN struggled to distinguish Wolves from Cats (P=0.461 for Cat).
+            However, our symbolic verification phase correctly identified that the visual evidence did not support
+            the Cat classification, dropping the probability to <strong>0.063</strong>. This demonstrates how
+            abductive reasoning can detect and correct reasoning shortcuts in neural classifiers.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Experimental Results -->
+
+
+
+
+
+
+<!-- Paper PDF Viewer (commented out)
+<section class="hero is-small">
+  <div class="hero-body">
+    <div class="container">
+      <h2 class="title has-text-centered">Paper</h2>
+      <div class="columns is-centered">
+        <div class="column is-four-fifths">
+          <iframe src="abduction-mlm.pdf" width="100%" height="700" style="border: 1px solid #ccc; border-radius: 8px;">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+End Paper PDF Viewer -->
+
+
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <div class="bibtex-header">
+        <h2 class="title">BibTeX</h2>
+        <button class="copy-bibtex-btn" onclick="copyBibTeX()" title="Copy BibTeX to clipboard">
+          <i class="fas fa-copy"></i>
+          <span class="copy-text">Copy</span>
+        </button>
+      </div>
+      <pre id="bibtex-code"><code>@inproceedings{Schuler2025Bridging,
+  title={Bridging Explanations and Logics: Opportunities for Multimodal Language Models},
+  author={Schuler, Nicolas Sebastian and Scotti, Vincenzo and Camilli, Matteo and Mirandola, Raffaela},
+  booktitle={International Symposium on Leveraging Applications of Formal Methods, Verification and Validation (AISoLA 2025)},
+  year={2025},
+  organization={Springer},
+  doi={10.5445/IR/1000184717},
+  url={https://github.com/NicolasSchuler/abduction-demo}
+}</code></pre>
+    </div>
+</section>
+<!--End BibTex citation -->
+
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            This website is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+          <p style="margin-bottom: 0;">
+            <strong>Acknowledgments:</strong> This work was supported by funding from
+            <a href="https://kastel.kit.edu" target="_blank">KASTEL Security Research Labs</a>, Karlsruhe
+            and the pilot program Core Informatics at KIT (KiKIT) of the
+            <a href="https://www.helmholtz.de" target="_blank">Helmholtz Association (HGF)</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+</main>
+
+<!-- Statcounter tracking code -->
+  
+<!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+  </body>
+  </html>

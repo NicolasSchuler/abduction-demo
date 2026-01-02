@@ -171,7 +171,9 @@ class PreprocessingPipeline:
             if not image_path.exists():
                 raise FileNotFoundError(f"Image not found: {image_path}")
 
-            original_image = Image.open(image_path).convert("RGB")
+            # Use context manager to ensure file handle is properly closed
+            with Image.open(image_path) as img:
+                original_image = img.convert("RGB")
             image_name = image_path.stem
         else:
             original_image = image

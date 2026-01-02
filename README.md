@@ -1,81 +1,140 @@
 # Abduction Demo: Bridging Explanations and Logics
 
-A demonstration of multimodal AI pipeline combining Large Language Models (LLMs), Vision-Language Models (VLMs), and Probabilistic Logic Programming for explainable image classification.
+A reference implementation demonstrating **intersymbolic explainability**—a novel approach that bridges subsymbolic neural perception with symbolic probabilistic reasoning to produce human-interpretable explanations for image classification decisions.
 
-## Overview
+## Abstract
 
-This repository contains the reference implementation for the AISoLA 2025 paper:
+This repository accompanies the AISoLA 2025 paper:
 
-**["Bridging Explanations and Logics: Opportunities and Multimodal Language Models"](https://doi.org/10.5445/IR/1000184717)**
+> **["Bridging Explanations and Logics: Opportunities and Multimodal Language Models"](https://doi.org/10.5445/IR/1000184717)**
+>
+> Nicolas Sebastian Schuler¹, Vincenzo Scotti¹, Matteo Camilli², Raffaela Mirandola¹
+>
+> ¹Karlsruhe Institute of Technology (KIT), Germany
+> ²Politecnico di Milano, Italy
 
-**Authors:**
+Modern AI systems often lack transparency in their decision-making processes. This work presents an **Intersymbolic Explainability Pipeline** that combines Convolutional Neural Networks (CNNs), Explainable AI (XAI) techniques, Vision-Language Models (VLMs), and Probabilistic Logic Programming (ProbLog) to generate natural language explanations grounded in formal logical reasoning.
 
-- Nicolas Sebastian Schuler (nicolas.schuler@kit.edu)
-- Vincenzo Scotti (vincenzo.scotti@kit.edu)
-- Matteo Camilli (matteo.camilli@polimi.it)
-- Raffaela Mirandola (raffaela.mirandola@kit.edu)
+The system transforms the opaque prediction "it is a cat" into the interpretable explanation: *"It is a **cat** because it has **pointy ears**"*—where both the classification and its justification emerge from verifiable logical inference.
 
-The demo showcases a novel approach to explainable AI that bridges natural language reasoning with formal probabilistic logic to classify animals (cats vs. dogs) in images.
+## Pipeline Overview
+
+![Intersymbolic Explainability Pipeline](data/paper/xai_abduction_overview.pdf)
+
+**Figure 1.** The Intersymbolic Explainability Pipeline architecture. The system operates in four phases: (1) **Phase 0** constructs an ontology and knowledge base encoding domain expertise about distinguishing features; (2) **Phase 1** performs subsymbolic perception through CNN prediction and XAI-based explanation generation; (3) **Phase 2** translates visual evidence into symbolic representations; (4) **Phase 3** applies abductive reasoning to derive explanations grounded in formal logic. The output provides both a classification decision and a human-interpretable justification.
+
+## Methodology
+
+The pipeline integrates multiple AI paradigms through a four-phase architecture, each phase bridging the gap between neural perception and symbolic reasoning.
+
+### Phase 0: Ontology and Knowledge Base Construction
+
+Before processing any image, the system constructs a domain-specific knowledge base that encodes expert knowledge about distinguishing features between classes.
+
+| Stage | Process | Input | Output | Model |
+|-------|---------|-------|--------|-------|
+| **1. Reasoning** | LLM generates comparative analysis of biological characteristics | Scientific query | `reasoning.md` | Qwen3-30B |
+| **2. Coding** | LLM translates natural language into ProbLog rules | Reasoning document | `coding.pl` | Gemini |
+| **3. Feature Extraction** | LLM extracts observable feature atoms from logic program | ProbLog program | `feature-list.txt` | Qwen3-Coder-30B |
+
+This phase is executed once per domain and produces reusable artifacts that encode the logical structure for classification.
+
+### Phase 1: Subsymbolic Perception
+
+Given an input image, the system performs neural network-based classification with explainability.
+
+| Stage | Process | Input | Output |
+|-------|---------|-------|--------|
+| **Prediction** | CNN binary classification | Raw image | Class prediction + confidence |
+| **Explanation Generation** | XAI attribution maps (Grad-CAM, SHAP, etc.) | Image + CNN activations | Saliency heatmaps |
+
+The optional CNN+XAI preprocessing module (see [Preprocessing Pipeline](#preprocessing-pipeline)) generates enhanced images that visually highlight decision-relevant regions, improving downstream VLM feature detection.
+
+### Phase 2: Intersymbolic Translation
+
+The visual evidence from Phase 1 is translated into symbolic form suitable for logical reasoning.
+
+| Stage | Process | Input | Output | Model |
+|-------|---------|-------|--------|-------|
+| **4. Grounding** | VLM detects features and assigns confidence scores | Feature list + image | `grounding.json` | Qwen3-VL-8B |
+
+Feature names undergo bidirectional transformation for natural language processing: `pointed_ears` → `pointed ears` (for VLM) → `pointed_ears` (for ProbLog). This stage supports two modes:
+
+- **Standard mode**: Detects all features present in the image
+- **Highlighted-only mode** (`--highlighted-only`): Only considers red-highlighted regions, assigning 0.0 to non-highlighted features
+
+### Phase 3: Abductive Reasoning
+
+The grounded evidence is combined with the knowledge base for probabilistic logical inference.
+
+| Stage | Process | Input | Output | Engine |
+|-------|---------|-------|--------|--------|
+| **5. Logic Execution** | Probabilistic inference | ProbLog program + evidence | P(cat), P(dog) | ProbLog 2.2.7 |
+
+The ProbLog engine computes posterior probabilities for each class given the observed features, producing both a classification and a logical trace explaining which features contributed to the decision.
 
 ## Demo Videos
 
-See the system in action with these terminal recordings:
+See the system in action:
 
-- [Kitty with highlighting (VLM respects highlighting)](https://asciinema.org/a/kK4DzK42LhfPiLWwLsov5H1QD) - Demonstrates the `--highlighted-only` mode where the VLM correctly identifies only red-highlighted features
-- [Raw kitty (no highlighting)](https://asciinema.org/a/L6XpAwddCe5zaRdzGORKrGuvN) - Standard processing without feature highlighting
-- [Kitty with highlighting (VLM not respecting highlighting)](https://asciinema.org/a/ALCFuopk6n5Jyb51jYTqBcMZ7) - Example where the VLM processes all features despite highlighting
+- [**Kitty with highlighting** (VLM respects highlighting)](https://asciinema.org/a/kK4DzK42LhfPiLWwLsov5H1QD) — The `--highlighted-only` mode where the VLM correctly identifies only red-highlighted features
+- [**Raw kitty** (no highlighting)](https://asciinema.org/a/L6XpAwddCe5zaRdzGORKrGuvN) — Standard processing without feature highlighting
+- [**Kitty with highlighting** (VLM not respecting highlighting)](https://asciinema.org/a/ALCFuopk6n5Jyb51jYTqBcMZ7) — Example where VLM processes all features despite highlighting
 
-## Architecture
+## Preprocessing Pipeline
 
-The system implements a 5-stage pipeline that transforms natural language reasoning into formal logical inference:
+The optional CNN+XAI preprocessing module enhances input images by highlighting decision-relevant regions before VLM grounding. This improves feature detection accuracy by directing the VLM's attention to salient areas.
+
+### Architecture
 
 ```
-+-------------+     +-------------+     +-------------+     +-------------+     +-------------+
-|   Stage 1   |---->|   Stage 2   |---->|   Stage 3   |---->|   Stage 4   |---->|   Stage 5   |
-|  Reasoning  |     |   Coding    |     |  Feature    |     |  Grounding  |     |   Logic     |
-|             |     |             |     | Extraction  |     |             |     | Execution   |
-+-------------+     +-------------+     +-------------+     +-------------+     +-------------+
-   LLM-based        LLM-to-ProbLog      LLM-based VLM       VLM-based Image     ProbLog
-   Analysis         Translation          Parser              Feature Detection    Inference
+Input Image → CNN Classifier → XAI Explainer → Image Enhancer → Enhanced Image
+                  ↓                  ↓               ↓
+            Prediction +      Attribution      Visualization
+            Confidence         Heatmap          Overlays
 ```
 
-### Stage 1: Reasoning
+### Components
 
-- **Input**: Scientific query about cat vs. dog classification
-- **Process**: LLM generates comparative analysis of biological characteristics
-- **Output**: Structured reasoning document (`reasoning.md`)
-- **Model**: Qwen3-30B
+| Component | Description | Implementation |
+|-----------|-------------|----------------|
+| **CNN Classifier** | Binary classification (cat vs. dog) using transfer learning | EfficientNet-B0 with ImageNet weights |
+| **XAI Explainer** | Generates attribution maps identifying influential image regions | Grad-CAM, Integrated Gradients, SHAP, Saliency, Layer-CAM, Occlusion |
+| **Image Enhancer** | Creates visualization overlays highlighting salient regions | Heatmap overlay, spotlight, blur background, desaturation |
 
-### Stage 2: Coding
+### XAI Methods
 
-- **Input**: Reasoning description from Stage 1
-- **Process**: LLM translates natural language into ProbLog program
-- **Output**: Probabilistic logic program (`coding.pl`)
-- **Model**: Gemini (configurable)
+The system supports multiple explainability techniques, each offering different perspectives on model decision-making:
 
-### Stage 3: Feature Extraction
+- **Grad-CAM**: Gradient-weighted Class Activation Mapping for localized explanations
+- **Integrated Gradients**: Attribution method satisfying sensitivity and implementation invariance
+- **SHAP**: Shapley Additive Explanations for feature importance
+- **Saliency Maps**: Gradient-based pixel importance
+- **Layer-CAM**: Layer-wise relevance propagation
+- **Occlusion Sensitivity**: Systematic region masking analysis
 
-- **Input**: ProbLog program from Stage 2
-- **Process**: LLM extracts feature names (atoms) from the program
-- **Output**: List of feature identifiers (`feature-list.txt`)
-- **Model**: Qwen3-Coder-30B with DSPy
+### Enhancement Styles
 
-### Stage 4: Grounding
+Generated visualizations can be customized through configuration:
 
-- **Input**: Feature list + input image
-- **Process**: Vision-Language Model detects features and assigns confidence scores. Feature names are transformed from underscores to spaces for better natural language processing (e.g., `pointed_ears` → `pointed ears`), then transformed back for ProbLog compatibility.
-- **Output**: Feature probability mappings (`grounding.json`)
-- **Model**: Qwen3-VL-8B with DSPy
-- **Options**:
-  - Standard mode: Detects all features present in the image
-  - Highlighted-only mode (`--highlighted-only`): Only detects red-highlighted features, assigns 0.0 to non-highlighted features
+| Style | Description |
+|-------|-------------|
+| `heatmap_overlay` | Semi-transparent attribution heatmap over original image |
+| `spotlight_heatmap` | Darkened background with illuminated salient regions |
+| `composite_overlay` | Combined multi-method attribution visualization |
+| `color_overlay` | Class-specific colormap (warm for cat, cool for dog) |
+| `blur_background` | Sharp foreground with Gaussian-blurred background |
+| `desaturate_background` | Color-preserved foreground with grayscale background |
 
-### Stage 5: Logic Execution
+### Configuration
 
-- **Input**: ProbLog program + grounded evidence
-- **Process**: Probabilistic inference using ProbLog engine
-- **Output**: Classification probabilities (P(cat), P(dog))
-- **Engine**: ProbLog 2.2.7
+Enable preprocessing via environment variables or `src/config.py`:
+
+```bash
+export ENABLE_CNN_PREPROCESSING=1
+export XAI_METHODS="grad_cam,integrated_grad,shap"
+export ENHANCEMENT_STYLES="heatmap_overlay,spotlight_heatmap"
+```
 
 ## Installation
 
@@ -100,10 +159,10 @@ The system implements a 5-stage pipeline that transforms natural language reason
    uv sync
    ```
 
-   Alternatively, with pip:
+   Alternatively, with pip (generate requirements.txt first if needed):
 
    ```bash
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 3. **Set up local LLM server:**
@@ -244,37 +303,62 @@ The script outputs:
 
 ```
 abduction-demo/
-├── main_dspy.py              # Main pipeline orchestration
+├── main_dspy.py                  # Main pipeline orchestration
+├── run_experiment.py             # Batch experiment runner
 ├── src/
-│   ├── __init__.py           # Package initialization
-│   ├── config.py             # Configuration management
-│   ├── data.py               # Image and label loading utilities
-│   ├── img_utils.py          # Image processing and visualization
-│   ├── validation.py         # Validation and sanitization utilities
-│   └── test_pipeline.py      # Test suite
+│   ├── __init__.py               # Package initialization
+│   ├── config.py                 # Centralized configuration management
+│   ├── data.py                   # Image and label loading utilities
+│   ├── img_utils.py              # Image encoding and visualization
+│   ├── validation.py             # Validation and sanitization utilities
+│   ├── test_pipeline.py          # Test suite
+│   └── preprocessing/            # CNN + XAI preprocessing module
+│       ├── __init__.py           # Subpackage initialization
+│       ├── cnn_classifier.py     # EfficientNet-B0 binary classifier
+│       ├── xai_explainer.py      # XAI methods (Grad-CAM, SHAP, etc.)
+│       ├── image_enhancer.py     # Saliency-based image enhancement
+│       └── preprocessing_pipeline.py  # Preprocessing orchestration
 ├── data/
-│   ├── images/               # Input images (.jpg)
-│   ├── labels/               # Segmentation labels (.txt)
-│   ├── notes.json            # Category ID mappings
-│   └── classes.txt           # Class names
-├── result-prompts/           # Cached pipeline outputs
-│   ├── reasoning.md
-│   ├── coding.pl
-│   ├── feature-list.txt
-│   └── grounding.json
-├── .archive/                 # Previous implementations
-├── pyproject.toml            # Project configuration
-├── ENHANCEMENTS.md           # Summary of enhancements
-└── README.md                 # This file
+│   ├── images/                   # Input images (.jpg)
+│   ├── labels/                   # YOLO-format segmentation labels
+│   ├── notes.json                # Category ID mappings
+│   ├── classes.txt               # Class names
+│   └── paper/                    # Paper figures and assets
+│       └── xai_abduction_overview.pdf
+├── result-prompts/               # Cached pipeline outputs
+│   ├── reasoning.md              # Phase 0, Stage 1 output
+│   ├── coding.pl                 # Phase 0, Stage 2 output
+│   ├── feature-list.txt          # Phase 0, Stage 3 output
+│   ├── grounding.json            # Phase 2, Stage 4 output
+│   ├── cnn_metadata/             # CNN classification metadata
+│   ├── xai_explanations/         # XAI visualization outputs
+│   └── enhanced_images/          # Enhanced image visualizations
+├── pyproject.toml                # Project configuration
+├── ENHANCEMENTS.md               # Enhancement documentation
+└── README.md                     # This file
 ```
 
 ## Key Dependencies
 
-- **langchain** (0.3.27+): LLM orchestration framework
-- **dspy-ai**: Structured prompting and LLM programming
-- **problog** (2.2.7+): Probabilistic logic programming engine
-- **opencv-python** (4.11+): Image processing
-- **numpy** (2.3+): Numerical computations
+### Core Pipeline
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| **langchain** | ≥0.3.27 | LLM orchestration framework |
+| **dspy-ai** | latest | Structured prompting and LLM programming |
+| **problog** | ≥2.2.7 | Probabilistic logic programming engine |
+| **opencv-python** | ≥4.11 | Image processing and visualization |
+| **numpy** | ≥2.3 | Numerical computations |
+
+### CNN + XAI Preprocessing
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| **torch** | ≥2.1 | Deep learning framework |
+| **torchvision** | ≥0.16 | Pre-trained models (EfficientNet-B0) |
+| **captum** | ≥0.6 | Model interpretability (Integrated Gradients) |
+| **pytorch-grad-cam** | ≥1.4 | Grad-CAM and Layer-CAM implementations |
+| **shap** | ≥0.42 | SHAP explanations |
 
 See `pyproject.toml` for complete dependency list.
 
@@ -306,20 +390,28 @@ See `pyproject.toml` for complete dependency list.
 
 ## Configuration
 
-Configuration is centralized in `src/config.py` and can be overridden via:
+Configuration is centralized in `src/config.py` and can be overridden via environment variables or command-line arguments.
 
-- Environment variables (e.g., `export TESTING=0`)
-- Command-line arguments (e.g., `--mode full`)
+### Core Parameters
 
-Key configuration parameters:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `TESTING` | `1` | Operation mode: `1` = cached results, `0` = live inference |
+| `IMAGE_INDEX` | `1` | Image index to process from dataset |
+| `EPSILON_PROB` | `0.0001` | Minimum probability for numerical stability |
+| `LLM_BASE_URL` | `http://127.0.0.1:1234/v1` | Local LLM server endpoint |
 
-- `TESTING`: Set to `1` for cached results, `0` for live inference (automatically managed by `--mode`)
-- `IMAGE_INDEX`: Which image to process from the dataset
-- `EPSILON_PROB`: Minimum probability value to avoid numerical issues (default: 0.0001)
-- `LLM_BASE_URL`: LLM server endpoint
-- Model identifiers for each pipeline stage
+### CNN + XAI Parameters
 
-View configuration:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ENABLE_CNN_PREPROCESSING` | `1` | Enable/disable CNN+XAI preprocessing |
+| `CNN_DEVICE` | `auto` | Compute device: `auto`, `cuda`, `cpu`, `mps` |
+| `CNN_CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence for classification |
+| `XAI_METHODS` | `grad_cam,integrated_grad` | Comma-separated XAI methods |
+| `ENHANCEMENT_STYLES` | `heatmap_overlay,...` | Comma-separated enhancement styles |
+
+### Viewing Configuration
 
 ```bash
 python -m src.config
@@ -327,13 +419,15 @@ python -m src.config
 python main_dspy.py --show-config
 ```
 
-### Environment Variables
+### Environment Variables Example
 
 ```bash
 export TESTING=0                              # Run full pipeline
 export IMAGE_INDEX=0                          # Process first image
 export LOG_LEVEL=DEBUG                        # Verbose logging
 export LLM_BASE_URL=http://localhost:8080/v1  # Custom LLM server
+export ENABLE_CNN_PREPROCESSING=1             # Enable preprocessing
+export XAI_METHODS="grad_cam,shap"            # XAI methods to use
 ```
 
 ## Development
@@ -375,65 +469,55 @@ ruff check .
 ruff format .
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `FileNotFoundError: Data directory not found` | Ensure `data/images/` and `data/labels/` directories exist with files |
+| `Connection refused` | Start local LLM server on configured URL |
+| `NotImplementedError: Gemini model` | Use `--mode testing` or `--mode partial` with cached results |
+| `Cached reasoning file not found` | Run `--mode full` first to generate cached files |
+| Tests fail with import errors | Run from project root: `pytest src/test_pipeline.py -v` |
+
+### Diagnostic Commands
+
+```bash
+python -m src.config              # Verify configuration
+python main_dspy.py --show-config # Display current settings
+python main_dspy.py --log-level DEBUG  # Verbose output
+```
+
 ## Citation
 
-If you use this code in your research, please cite:
+If you use this implementation in your research, please cite:
 
 ```bibtex
 @inproceedings{schuler2025bridging,
-  title={Bridging Explanations and Logics: Opportunities and Multimodal Language Models},
-  author={Schuler, Nicolas Sebastian and Scotti, Vincenzo and Camilli, Matteo and Mirandola, Raffaela},
-  booktitle={International Symposium on Leveraging Applications of Formal Methods (AISoLA)},
-  year={2025}
+  title     = {Bridging Explanations and Logics: Opportunities and Multimodal Language Models},
+  author    = {Schuler, Nicolas Sebastian and Scotti, Vincenzo and Camilli, Matteo and Mirandola, Raffaela},
+  booktitle = {International Symposium on Leveraging Applications of Formal Methods (AISoLA)},
+  year      = {2025},
+  doi       = {10.5445/IR/1000184717}
 }
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
 This research was conducted at:
 
-- Karlsruhe Institute of Technology (KIT), Germany
-- Politecnico di Milano, Italy
+- **Karlsruhe Institute of Technology (KIT)**, Germany
+- **Politecnico di Milano**, Italy
 
-## Keywords
+## License
 
-Explainable AI (XAI), Multimodal Language Models (MLM), Large Language Models (LLM), Logical Programming, Probabilistic Reasoning, ProbLog, Vision-Language Models
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: `FileNotFoundError: Data directory not found`
-
-- **Solution**: Ensure `data/images/` and `data/labels/` directories exist and contain files
-
-**Issue**: `Connection refused` when running full pipeline
-
-- **Solution**: Start your local LLM server and verify it's running on the configured URL
-
-**Issue**: `NotImplementedError: Gemini model is not implemented`
-
-- **Solution**: Run in testing mode (`--mode testing`) or partial mode (`--mode partial`) or implement the Gemini API in `main_dspy.py`
-
-**Issue**: `FileNotFoundError: Cached reasoning file not found` when using partial mode
-
-- **Solution**: Run full pipeline first (`--mode full`) to generate cached reasoning and coding files, then use partial mode
-
-**Issue**: Tests fail with import errors
-
-- **Solution**: Run tests from project root: `pytest src/test_pipeline.py -v`
-
-### Getting Help
-
-- Check the [ENHANCEMENTS.md](ENHANCEMENTS.md) file for detailed enhancement documentation
-- Review `src/test_pipeline.py` for usage examples
-- Run with `--log-level DEBUG` for detailed output
-- Verify configuration with `python -m src.config`
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-This is a research demonstration repository. For questions or collaboration inquiries, please contact the authors listed above.
+This is a research demonstration repository accompanying a peer-reviewed publication. For questions, collaboration inquiries, or to report issues, please contact the authors or open an issue on GitHub.
+
+---
+
+**Keywords**: Explainable AI (XAI) · Intersymbolic AI · Multimodal Language Models · Probabilistic Logic Programming · ProbLog · Vision-Language Models · Neuro-Symbolic AI · Abductive Reasoning

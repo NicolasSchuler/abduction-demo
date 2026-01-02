@@ -55,7 +55,7 @@ venv = ".venv"
 reportMissingImports = "warning"
 reportMissingTypeStubs = false
 pythonVersion = "3.13"
-pythonPlatform = "Linux"
+# Platform-agnostic: removed pythonPlatform to support both Linux and macOS
 
 [tool.ruff]
 line-length = 120
