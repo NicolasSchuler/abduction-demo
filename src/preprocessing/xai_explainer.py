@@ -304,11 +304,14 @@ class XAIExplainer:
         Args:
             image: PIL Image, or path to image file
             target_class: Target class for explanations (if None, uses predicted class)
-            return_raw: Whether to return raw attribution tensors
+            return_raw: Reserved for future use - currently unused.
+                        When implemented, will return raw attribution tensors.
 
         Returns:
             Dictionary containing explanations from each method
         """
+        # TODO: Implement return_raw functionality if raw tensor output is needed
+        _ = return_raw  # Explicitly acknowledge unused parameter
         # Load and preprocess image
         if isinstance(image, (str, Path)):
             image_path = Path(image)

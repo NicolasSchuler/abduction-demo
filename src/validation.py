@@ -28,8 +28,6 @@ PROBLOG_PREDICATE_PATTERNS = {
 class ValidationError(Exception):
     """Raised when validation fails."""
 
-    pass
-
 
 def validate_probability(value: float, name: str = "probability") -> None:
     """
@@ -175,6 +173,42 @@ def validate_problog_program(program: str) -> None:
         raise ValidationError(f"Invalid ProbLog syntax: {e}")
 
     logger.info(f"Validated ProbLog program ({len(program)} characters)")
+
+
+def sanitize_problog_identifier(name: str) -> str:
+    """
+    Sanitize a string to be a safe ProbLog identifier.
+
+    Ensures the identifier contains only alphanumeric characters and underscores,
+    preventing potential injection attacks when interpolating into ProbLog code.
+
+    Args:
+        name: The feature name or identifier to sanitize
+
+    Returns:
+        Sanitized identifier safe for use in ProbLog code
+
+    Example:
+        >>> sanitize_problog_identifier("small_muzzle")
+        'small_muzzle'
+        >>> sanitize_problog_identifier("feature); malicious(")
+        'feature_malicious'
+        >>> sanitize_problog_identifier("pointed ears")
+        'pointed_ears'
+    """
+    # Replace spaces with underscores first
+    sanitized = name.replace(" ", "_")
+    # Remove any character that isn't alphanumeric or underscore
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '', sanitized)
+    # Ensure it doesn't start with a number (ProbLog atoms must start with lowercase letter)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = 'f_' + sanitized
+    # Ensure it's not empty
+    if not sanitized:
+        sanitized = 'unknown_feature'
+    # Ensure it starts with lowercase (ProbLog convention for atoms)
+    sanitized = sanitized[0].lower() + sanitized[1:] if len(sanitized) > 1 else sanitized.lower()
+    return sanitized
 
 
 def clamp_probability(value: float) -> float:

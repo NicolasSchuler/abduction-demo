@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -9,6 +10,9 @@ import numpy as np
 from src.img_utils import blur_background
 
 logger = logging.getLogger(__name__)
+
+# Thread lock for safe initialization of shared class variables
+_categories_lock = threading.Lock()
 
 # Use package-relative paths instead of CWD-relative
 DATA_PATH_ROOT = Path(__file__).parent.parent / "data"
@@ -56,23 +60,27 @@ class LabeledImage:
         self.cl = "cat" if "cat" in [label["name"] for label in self.labels] else "dog"
 
     def extract_categories(self, label_db: Path) -> None:
-        """Load category mappings from JSON database file."""
+        """Load category mappings from JSON database file (thread-safe)."""
         # Create Label<>ID relation db (shared across instances)
+        # Use double-checked locking pattern for thread safety
         if not LabeledImage.categories:
-            try:
-                with label_db.open("r") as f:
-                    data = json.load(f)
-                    if "categories" not in data:
-                        raise ValueError(f"Missing 'categories' key in {label_db}")
-                    for label in data["categories"]:
-                        if "id" not in label or "name" not in label:
-                            logger.warning(f"Skipping malformed category entry: {label}")
-                            continue
-                        LabeledImage.categories[int(label["id"])] = label["name"]
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON in category file {label_db}: {e}") from e
-            except FileNotFoundError:
-                raise FileNotFoundError(f"Category database not found: {label_db}")
+            with _categories_lock:
+                # Check again inside lock to avoid race condition
+                if not LabeledImage.categories:
+                    try:
+                        with label_db.open("r") as f:
+                            data = json.load(f)
+                            if "categories" not in data:
+                                raise ValueError(f"Missing 'categories' key in {label_db}")
+                            for label in data["categories"]:
+                                if "id" not in label or "name" not in label:
+                                    logger.warning(f"Skipping malformed category entry: {label}")
+                                    continue
+                                LabeledImage.categories[int(label["id"])] = label["name"]
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"Invalid JSON in category file {label_db}: {e}") from e
+                    except FileNotFoundError:
+                        raise FileNotFoundError(f"Category database not found: {label_db}")
 
     def extract_labels(self, label_path: Path) -> List[dict]:
         """Extract labels from YOLO-format annotation file."""
@@ -129,6 +137,13 @@ class LabeledImage:
                 if len(norm_coords) % 2 != 0:
                     logger.warning(f"Polygon has odd number of coordinates ({len(norm_coords)}), skipping")
                     continue
+                # Validate normalized coordinates are in valid range [0, 1]
+                if np.any(norm_coords < 0.0) or np.any(norm_coords > 1.0):
+                    logger.warning(
+                        f"Polygon has coordinates outside normalized range [0, 1], "
+                        f"min={norm_coords.min():.3f}, max={norm_coords.max():.3f}, skipping"
+                    )
+                    continue
                 points = norm_coords.reshape(-1, 2)
                 points[:, 0] *= img_w
                 points[:, 1] *= img_h
@@ -171,23 +186,27 @@ def load_data() -> List[LabeledImage]:
         ValueError: If image/label pairs are mismatched
     """
     limgs = []
-    # Support case-insensitive JPEG extensions
-    image_extensions = ["*.jpg", "*.JPG", "*.jpeg", "*.JPEG", "*.png", "*.PNG"]
-    for ext in image_extensions:
-        for img in DATA_PATH_IMAGES.glob(ext):
-            label_path = DATA_PATH_LABELS / (img.stem + ".txt")
-            if not label_path.exists():
-                logger.warning(f"No label file found for {img.name}, skipping")
-                continue
-            try:
-                limgs.append(LabeledImage(img, label_path, DATA_PATH_ROOT / "notes.json"))
-            except (ValueError, FileNotFoundError) as e:
-                logger.warning(f"Failed to load {img.name}: {e}")
-                continue
+    # Support case-insensitive image extensions using single directory scan
+    # More efficient than multiple glob() calls which each scan the directory
+    valid_extensions = {".jpg", ".jpeg", ".png"}
+    for img in DATA_PATH_IMAGES.iterdir():
+        if not img.is_file():
+            continue
+        if img.suffix.lower() not in valid_extensions:
+            continue
+        label_path = DATA_PATH_LABELS / (img.stem + ".txt")
+        if not label_path.exists():
+            logger.warning(f"No label file found for {img.name}, skipping")
+            continue
+        try:
+            limgs.append(LabeledImage(img, label_path, DATA_PATH_ROOT / "notes.json"))
+        except (ValueError, FileNotFoundError) as e:
+            logger.warning(f"Failed to load {img.name}: {e}")
+            continue
     return limgs
 
 
-def get_feature_list(labeled_image: LabeledImage):
+def get_feature_list(labeled_image: LabeledImage) -> List[str]:
     """Get a list of available features in the given image."""
     return [entry["name"] for entry in labeled_image.labels]
 

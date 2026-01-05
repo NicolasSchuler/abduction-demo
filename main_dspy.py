@@ -18,6 +18,7 @@ from src.img_utils import encode_base64_resized
 from src.validation import (
     ValidationError,
     sanitize_grounding_results,
+    sanitize_problog_identifier,
     validate_feature_list,
     validate_grounding_results,
     validate_problog_program,
@@ -29,6 +30,11 @@ logging.basicConfig(
     format=config.LOG_FORMAT,
 )
 logger = logging.getLogger(__name__)
+
+# Confidence thresholds for display grouping
+DISPLAY_HIGH_CONFIDENCE_THRESHOLD = 0.8
+DISPLAY_MEDIUM_CONFIDENCE_THRESHOLD = 0.5
+DISPLAY_BAR_WIDTH = 40
 
 # Import CNN + XAI preprocessing pipeline (EfficientNet-based)
 try:
@@ -148,7 +154,7 @@ def reasoning():
         - Ear Shape: cats have pointed upright ears, dogs have variable...
 
     Note:
-        Uses Qwen3-30B model via local LM server (http://127.0.0.1:1234/v1).
+        Uses model specified by config.MODEL_REASONING via config.LLM_BASE_URL.
         Result is typically cached to result-prompts/reasoning.md.
     """
     logger.info("Stage 1: Generating scientific reasoning about cat vs. dog classification")
@@ -303,7 +309,7 @@ def extract_feature_list(problog_program: str) -> list[str]:
         ['small_muzzle', 'pointed_ears', 'vertical_pupils', ...]
 
     Note:
-        Uses Qwen3-Coder-30B via DSPy's structured prompting for reliable parsing.
+        Uses model specified by config.MODEL_FEATURE_EXTRACTION via DSPy's structured prompting.
     """
     logger.info("Stage 3: Extracting feature names from ProbLog program")
 
@@ -368,9 +374,9 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
         {'small_muzzle': 0.92, 'pointed_ears': 0.88}
 
     Note:
-        - Uses Qwen3-VL-8B multimodal model via DSPy
-        - Image is automatically resized to 512x512 with 80% quality
-        - Requires local LM server with vision model support
+        - Uses model specified by config.MODEL_GROUNDING via DSPy
+        - Image is automatically resized per config.IMAGE_MAX_WIDTH/HEIGHT with config.IMAGE_QUALITY
+        - Requires LLM server with vision model support at config.LLM_BASE_URL
     """
     logger.info(f"Stage 4: Grounding {len(feature_list)} features in image")
     logger.debug(f"Image path: {image_path}")
@@ -392,9 +398,9 @@ def grounding(feature_list: list[str], image_path: Path, highlighted_only: bool 
             """
             image_desc = "Image to be analyzed for present features"
 
-        print(config.MODEL_GROUNDING)
-        print(config.LLM_BASE_URL)
-        print(config.LLM_API_KEY)
+        logger.debug(f"Using grounding model: {config.MODEL_GROUNDING}")
+        logger.debug(f"LLM base URL: {config.LLM_BASE_URL}")
+        # Note: API key intentionally not logged for security
         lm = dspy.LM(
             config.MODEL_GROUNDING,
             api_base=config.LLM_BASE_URL,
@@ -464,12 +470,12 @@ def display_grounding_results(grounding_res: dict[str, float]) -> None:
     sorted_features = sorted(grounding_res.items(), key=lambda x: x[1], reverse=True)
 
     # Group features by confidence level
-    high_conf = [(f, p) for f, p in sorted_features if p >= 0.8]
-    medium_conf = [(f, p) for f, p in sorted_features if 0.5 <= p < 0.8]
-    low_conf = [(f, p) for f, p in sorted_features if p < 0.5]
+    high_conf = [(f, p) for f, p in sorted_features if p >= DISPLAY_HIGH_CONFIDENCE_THRESHOLD]
+    medium_conf = [(f, p) for f, p in sorted_features if DISPLAY_MEDIUM_CONFIDENCE_THRESHOLD <= p < DISPLAY_HIGH_CONFIDENCE_THRESHOLD]
+    low_conf = [(f, p) for f, p in sorted_features if p < DISPLAY_MEDIUM_CONFIDENCE_THRESHOLD]
 
     # Helper function to create visual bar
-    def create_bar(probability: float, width: int = 40) -> str:
+    def create_bar(probability: float, width: int = DISPLAY_BAR_WIDTH) -> str:
         filled = int(probability * width)
         empty = width - filled
         return "█" * filled + "░" * empty
@@ -478,9 +484,9 @@ def display_grounding_results(grounding_res: dict[str, float]) -> None:
     def get_emoji(probability: float) -> str:
         if probability >= 0.9:
             return "🔥"
-        elif probability >= 0.8:
+        elif probability >= DISPLAY_HIGH_CONFIDENCE_THRESHOLD:
             return "✓"
-        elif probability >= 0.5:
+        elif probability >= DISPLAY_MEDIUM_CONFIDENCE_THRESHOLD:
             return "◆"
         else:
             return "·"
@@ -609,6 +615,9 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
     evidence_lines.append("% =============================================================================")
 
     for feature_name, probability in grounding.items():
+        # Sanitize feature name to prevent ProbLog injection
+        safe_feature_name = sanitize_problog_identifier(feature_name)
+
         # Clamp probability to avoid numerical issues with extreme values
         prob = max(config.EPSILON_PROB, min(1.0 - config.EPSILON_PROB, probability))
 
@@ -618,8 +627,8 @@ def execute_logic_program(problog_program: str, grounding: dict[str, float]) -> 
         tpr = prob  # High confidence means high TPR
         fpr = 1.0 - prob  # High confidence means low FPR
 
-        evidence_lines.append(f"confidence(grounding_observer, {feature_name}, {tpr:.6f}, {fpr:.6f}).")
-        evidence_lines.append(f"evidence(report(grounding_observer, {feature_name}), true).")
+        evidence_lines.append(f"confidence(grounding_observer, {safe_feature_name}, {tpr:.6f}, {fpr:.6f}).")
+        evidence_lines.append(f"evidence(report(grounding_observer, {safe_feature_name}), true).")
 
     # Add queries section
     evidence_lines.append("\n% =============================================================================")
@@ -716,6 +725,44 @@ def display_classification_results(
     return predicted
 
 
+def load_cached_pipeline_data(include_grounding: bool = False) -> tuple[str, str, list[str], dict[str, float] | None]:
+    """
+    Load and validate cached pipeline data from files.
+
+    This helper function consolidates the common logic for loading cached reasoning,
+    coding, and feature extraction results used by both testing and partial modes.
+
+    Args:
+        include_grounding: If True, also load and validate cached grounding results.
+
+    Returns:
+        Tuple of (reasoning_description, problog_program, feature_list, grounding_res).
+        grounding_res is None if include_grounding is False.
+
+    Raises:
+        FileNotFoundError: If cached files are missing
+        ValidationError: If cached data is invalid
+    """
+    reasoning_description = config.CACHED_REASONING_FILE.read_text()
+    problog_program = config.CACHED_CODING_FILE.read_text()
+    feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
+
+    # Validate loaded data
+    validate_problog_program(problog_program)
+    validate_feature_list(feature_list)
+
+    # Transform underscores to spaces in feature names
+    feature_list = [feature.replace("_", " ") for feature in feature_list]
+
+    grounding_res = None
+    if include_grounding:
+        grounding_res = json.loads(config.CACHED_GROUNDING_FILE.read_text())
+        validate_grounding_results(grounding_res)
+        grounding_res = sanitize_grounding_results(grounding_res)
+
+    return reasoning_description, problog_program, feature_list, grounding_res
+
+
 def run_testing_mode() -> tuple[str, str, list[str], dict[str, float]]:
     """
     Execute testing mode: load all results from cached files.
@@ -729,22 +776,12 @@ def run_testing_mode() -> tuple[str, str, list[str], dict[str, float]]:
     """
     logger.info("Running in TESTING mode (using cached results)")
 
-    reasoning_description = config.CACHED_REASONING_FILE.read_text()
-    problog_program = config.CACHED_CODING_FILE.read_text()
-    feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
-    grounding_res = json.loads(config.CACHED_GROUNDING_FILE.read_text())
-
-    # Validate loaded data
-    validate_problog_program(problog_program)
-    validate_feature_list(feature_list)
-    validate_grounding_results(grounding_res)
-    grounding_res = sanitize_grounding_results(grounding_res)
-
-    # Transform underscores to spaces in feature names
-    feature_list = [feature.replace("_", " ") for feature in feature_list]
+    reasoning_description, problog_program, feature_list, grounding_res = load_cached_pipeline_data(
+        include_grounding=True
+    )
 
     logger.debug("Loaded and validated all cached results")
-    return reasoning_description, problog_program, feature_list, grounding_res
+    return reasoning_description, problog_program, feature_list, grounding_res  # type: ignore[return-value]
 
 
 def run_partial_mode(
@@ -775,17 +812,8 @@ def run_partial_mode(
     # Ensure output directory exists
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load cached reasoning, coding, and features
-    reasoning_description = config.CACHED_REASONING_FILE.read_text()
-    problog_program = config.CACHED_CODING_FILE.read_text()
-    feature_list = [line.strip() for line in config.CACHED_FEATURES_FILE.read_text().splitlines()]
-
-    # Validate loaded cached data
-    validate_problog_program(problog_program)
-    validate_feature_list(feature_list)
-
-    # Transform underscores to spaces in feature names
-    feature_list = [feature.replace("_", " ") for feature in feature_list]
+    # Load cached reasoning, coding, and features using shared helper
+    reasoning_description, problog_program, feature_list, _ = load_cached_pipeline_data(include_grounding=False)
 
     logger.debug("Loaded and validated cached reasoning, coding, and features")
 
