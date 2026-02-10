@@ -119,6 +119,22 @@ function setupVideoCarouselAutoplay() {
     });
 }
 
+// Scroll-triggered fade-in animations (progressive enhancement)
+document.querySelectorAll('.fade-in').forEach(el => {
+    el.classList.add('fade-in-ready');
+});
+
+const fadeObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            fadeObserver.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-in-ready').forEach(el => fadeObserver.observe(el));
+
 $(document).ready(function() {
     // Check for click events on the navbar burger icon
 

@@ -66,7 +66,7 @@
   
   <!-- Favicon and App Icons -->
   <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
-  <link rel="apple-touch-icon" href="static/images/favicon.ico">
+  <link rel="apple-touch-icon" href="static/images/apple-touch-icon.png">
   
   <!-- Critical CSS - Load synchronously -->
   <link rel="stylesheet" href="static/css/bulma.min.css">
@@ -75,14 +75,14 @@
   <!-- Non-critical CSS - Load asynchronously -->
   <link rel="preload" href="static/css/bulma-carousel.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <!-- Font Awesome CSS removed: using JS/SVG approach instead (fontawesome.all.min.js) -->
   <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   
   <!-- Fallback for browsers that don't support preload -->
   <noscript>
     <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
     <link rel="stylesheet" href="static/css/bulma-slider.min.css">
-    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <!-- Font Awesome CSS removed: using JS/SVG approach -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   </noscript>
   
@@ -215,7 +215,7 @@
             <div class="is-size-5 publication-authors">
               <span class="author-block"><sup>1</sup>KASTEL, Karlsruhe Institute of Technology, Germany</span><br>
               <span class="author-block"><sup>2</sup>DEIB, Politecnico di Milano, Italy</span><br>
-              <span class="author-block" style="margin-top: 0.5em; display: inline-block;"><strong>AISoLA 2025</strong></span>
+              <span class="venue-badge">AISoLA 2025</span>
             </div>
 
             <div class="column has-text-centered">
@@ -274,8 +274,8 @@
 <section class="hero teaser">
   <div class="container is-max-desktop">
     <div class="hero-body">
-      <img src="static/images/xai_abduction_overview.png" alt="Intersymbolic Explainability Pipeline" class="teaser-image" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-      <h2 class="subtitle has-text-centered" style="margin-top: 1.5rem;">
+      <img src="static/images/xai_abduction_overview.png" alt="Intersymbolic Explainability Pipeline" class="teaser-image" style="width: 100%;">
+      <h2 class="subtitle has-text-centered" style="margin-top: 1.25rem;">
         <strong>Probabilistic Abduction Framework for Intersymbolic Explainability:</strong> Our pipeline bridges subsymbolic neural perception with symbolic reasoning through MLM-assisted translation and ProbLog-based abductive inference.
       </h2>
     </div>
@@ -287,7 +287,7 @@
 <section class="section hero is-light">
   <div class="container is-max-desktop">
     <div class="columns is-centered has-text-centered">
-      <div class="column is-four-fifths">
+      <div class="column is-four-fifths fade-in">
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
@@ -304,7 +304,7 @@
 <!-- Method Overview Carousel -->
 <section class="hero is-small">
   <div class="hero-body">
-    <div class="container">
+    <div class="container fade-in">
       <h2 class="title is-3 has-text-centered">Method Overview</h2>
       <div id="results-carousel" class="carousel results-carousel">
         <div class="item">
@@ -349,7 +349,7 @@
 <!-- Experimental Results -->
 <section class="hero is-small is-light">
   <div class="hero-body">
-    <div class="container is-max-desktop">
+    <div class="container is-max-desktop fade-in">
       <h2 class="title is-3 has-text-centered">Experimental Results</h2>
       <div class="content">
         <p class="has-text-centered">
@@ -413,8 +413,8 @@
                 <td>12</td>
                 <td>0.461</td>
                 <td>0.539</td>
-                <td style="color: #48c774; font-weight: bold;">0.063</td>
-                <td style="color: #48c774; font-weight: bold;">0.937</td>
+                <td style="color: #059669; font-weight: bold;">0.063</td>
+                <td style="color: #059669; font-weight: bold;">0.937</td>
               </tr>
             </tbody>
           </table>
@@ -459,7 +459,7 @@ End Paper PDF Viewer -->
 
 <!--BibTex citation -->
   <section class="section" id="BibTeX">
-    <div class="container is-max-desktop content">
+    <div class="container is-max-desktop content fade-in">
       <div class="bibtex-header">
         <h2 class="title">BibTeX</h2>
         <button class="copy-bibtex-btn" onclick="copyBibTeX()" title="Copy BibTeX to clipboard">
@@ -487,18 +487,22 @@ End Paper PDF Viewer -->
       <div class="column is-8">
         <div class="content">
 
-          <p>
-            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
-            This website is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
-            Commons Attribution-ShareAlike 4.0 International License</a>.
-          </p>
-
-          <p style="margin-bottom: 0;">
+          <p style="margin-bottom: 1.25rem;">
             <strong>Acknowledgments:</strong> This work was supported by funding from
             <a href="https://kastel.kit.edu" target="_blank">KASTEL Security Research Labs</a>, Karlsruhe
             and the pilot program Core Informatics at KIT (KiKIT) of the
             <a href="https://www.helmholtz.de" target="_blank">Helmholtz Association (HGF)</a>.
           </p>
+          <a href="https://www.kit.edu" target="_blank" rel="noopener" title="Karlsruhe Institute of Technology">
+            <img src="static/images/kitlogo_en.png" alt="KIT - Karlsruhe Institute of Technology" style="height: 40px; opacity: 0.55; filter: grayscale(30%); transition: opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='0.55'">
+          </a>
+
+          <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-color);">
+          <p style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0;">
+            Built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            Licensed under <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a>.
+          </p>
+
 
         </div>
       </div>

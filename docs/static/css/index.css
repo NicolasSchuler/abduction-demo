@@ -16,7 +16,7 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --gradient-accent: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   --gradient-subtle: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
   --border-radius: 12px;
   --border-radius-lg: 16px;
@@ -93,6 +93,22 @@ body {
   overflow: hidden;
 }
 
+.hero:first-of-type {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.hero:first-of-type::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at 20% 50%, rgba(37, 99, 235, 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 50%, rgba(124, 58, 237, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
 .hero.is-light {
   background: var(--background-secondary);
   border-top: 1px solid var(--border-color);
@@ -104,8 +120,8 @@ body {
 }
 
 .teaser .hero-body {
-  padding-top: 2rem;
-  padding-bottom: 4rem;
+  padding-top: 0;
+  padding-bottom: 3rem;
 }
 
 .teaser {
@@ -118,8 +134,15 @@ body {
     font-family: 'Inter', sans-serif !important;
     font-weight: 800 !important;
     color: var(--text-primary) !important;
-    margin-bottom: 2rem !important;
+    margin-bottom: 0.75rem !important;
     line-height: 1.1 !important;
+    letter-spacing: -0.02em;
+}
+
+.subtitle.is-3 {
+    color: var(--text-secondary) !important;
+    font-weight: 400 !important;
+    margin-bottom: 2rem !important;
 }
 
 .publication-banner {
@@ -316,6 +339,7 @@ body {
   margin-bottom: 2rem !important;
   position: relative;
   padding-bottom: 1rem;
+  letter-spacing: -0.01em;
 }
 
 .title.is-3::after {
@@ -324,7 +348,7 @@ body {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 60px;
+  width: 48px;
   height: 3px;
   background: var(--gradient-accent);
   border-radius: 2px;
@@ -707,11 +731,11 @@ code {
   }
 }
 
-/* Animation for page load */
+/* Scroll-triggered animations */
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(24px);
   }
   to {
     opacity: 1;
@@ -719,8 +743,25 @@ code {
   }
 }
 
-.hero, .section {
-  animation: fadeInUp 0.6s ease-out;
+.fade-in-ready {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.fade-in-ready.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Only animate the first hero on page load */
+.hero:first-of-type {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+/* Reduce excess gap between hero and teaser */
+.hero:first-of-type .hero-body {
+  padding-bottom: 1.5rem;
 }
 
 /* Improved focus states for accessibility */
@@ -731,6 +772,105 @@ a:focus {
   outline-offset: 2px;
 }
 
+
+/* Results Table Improvements */
+.table-container {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+  margin: 1.5rem 0;
+}
+
+.table.is-bordered.is-striped.is-hoverable.is-fullwidth {
+  margin-bottom: 0 !important;
+  border: none !important;
+}
+
+.table thead th {
+  background: var(--text-primary) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  border-color: rgba(255,255,255,0.1) !important;
+  padding: 0.9rem 1rem !important;
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: 0.75rem 1rem !important;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle !important;
+}
+
+.table tbody tr {
+  transition: var(--transition);
+}
+
+.table tbody tr:hover {
+  background-color: rgba(37, 99, 235, 0.04) !important;
+}
+
+/* Key Finding Callout */
+.notification.is-info.is-light {
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f4ff 100%) !important;
+  border: 1px solid rgba(37, 99, 235, 0.15) !important;
+  border-left: 4px solid var(--primary-color) !important;
+  border-radius: var(--border-radius) !important;
+  color: var(--text-primary) !important;
+  padding: 1.5rem !important;
+  margin-top: 1.5rem;
+}
+
+.notification.is-info.is-light strong {
+  color: var(--primary-color);
+}
+
+/* Teaser image card */
+.teaser-image {
+  border-radius: var(--border-radius) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-color);
+  transition: var(--transition);
+}
+
+.teaser-image:hover {
+  box-shadow: var(--shadow-xl) !important;
+  transform: translateY(-2px);
+}
+
+/* Teaser caption */
+.teaser .subtitle {
+  color: var(--text-secondary) !important;
+  font-size: 1rem !important;
+  line-height: 1.6 !important;
+  max-width: 800px;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Venue badge */
+.venue-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--text-primary) 0%, #334155 100%);
+  color: white;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+}
+
+/* Publication links spacing */
+.publication-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
 
 /* Print styles */
 @media print {
